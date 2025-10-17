@@ -8,16 +8,24 @@
     "start": "next start"
   },
   "dependencies": {
+    "@stomp/stompjs": "^7.2.1",
+    "framer-motion": "^12.23.24",
+    "next": "15.5.6",
+    "next-intl": "^4.3.12",
+    "peerjs": "^1.5.5",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "next": "15.5.6"
+    "sockjs-client": "^1.6.1",
+    "sonner": "^2.0.7",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4"
+    "@types/sockjs-client": "^1.5.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
