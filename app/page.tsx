@@ -1,8 +1,11 @@
+import Button from "@/components/Button";
+import Link from "next/link";
+
 export default function Home() {
     return (
         <main className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--color-background)' }}>
             <div className="max-w-md w-full text-center space-y-8">
-                {/* Logo Placeholder */}
+                {/* Logo */}
                 <div className="flex justify-center">
                     <div
                         className="w-32 h-32 rounded-full flex items-center justify-center shadow-lg"
@@ -24,25 +27,16 @@ export default function Home() {
 
                 {/* CTA Buttons */}
                 <div className="space-y-3">
-                    <button
-                        className="w-full text-white font-semibold py-3 px-6 shadow-md hover:shadow-lg transition-all"
-                        style={{
-                            backgroundColor: 'var(--color-primary)',
-                            borderRadius: 'var(--radius-button)'
-                        }}
-                    >
-                        Entrar
-                    </button>
-                    <button
-                        className="w-full bg-transparent border-2 font-semibold py-3 px-6 transition-all hover:text-white"
-                        style={{
-                            borderColor: 'var(--color-accent)',
-                            color: 'var(--color-accent)',
-                            borderRadius: 'var(--radius-button)'
-                        }}
-                    >
-                        Registrar
-                    </button>
+                    <Link href="/login">
+                        <Button variant="primary" fullWidth>
+                            Entrar
+                        </Button>
+                    </Link>
+                    <Link href="/register">
+                        <Button variant="secondary" fullWidth>
+                            Registrar
+                        </Button>
+                    </Link>
                 </div>
 
                 {/* Language Toggle */}
