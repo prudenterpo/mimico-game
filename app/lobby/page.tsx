@@ -26,6 +26,7 @@ export default function LobbyPage() {
         pendingInvite,
         acceptInvite,
         rejectInvite,
+        currentTable
     } = useStore();
 
     const [message, setMessage] = useState("");
@@ -48,7 +49,6 @@ export default function LobbyPage() {
     //   }
     // }, [isAuthenticated, router]);
 
-    // Conectar WebSocket
     useEffect(() => {
         if (user && isAuthenticated) {
             connectWebSocket();
@@ -59,19 +59,18 @@ export default function LobbyPage() {
         };
     }, [user, isAuthenticated, connectWebSocket, disconnectWebSocket]);
 
-    // Listener para convites
     useEffect(() => {
-        console.log("useEffect de convites disparou. pendingInvite:", pendingInvite);
+        if (currentTable && currentTable.status === "waiting") {
+            router.push(`/table/${currentTable.id}`)
+        }
+    }, [currentTable, router]);
 
+    useEffect(() => {
         if (pendingInvite) {
-            console.log("Mostrando toast de convite...");
-
-            // Fechar toast anterior se existir
             if (toastIdRef.current) {
                 toast.dismiss(toastIdRef.current);
             }
 
-            // Mostrar novo toast
             toastIdRef.current = toast(
                 <InviteToast
                     invite={pendingInvite}
