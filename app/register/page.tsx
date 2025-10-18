@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/stores/store";
 import Button from "@/components/Button";
-import Input from "@/components/Input";
-import Card from "@/components/Card";
+import Logo from "@/components/Logo";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -48,101 +48,165 @@ export default function RegisterPage() {
 
     return (
         <main
-            className="min-h-screen flex items-center justify-center p-4"
+            className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden"
             style={{ backgroundColor: 'var(--color-background)' }}
         >
-            <Card className="w-full max-w-md">
-                <div className="text-center mb-6">
-                    <div className="flex justify-center mb-4">
-                        <div
-                            className="w-20 h-20 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: 'var(--color-primary)' }}
-                        >
-                            <span className="text-4xl">🐵</span>
-                        </div>
-                    </div>
-                    <h1 className="text-3xl mb-2" style={{ color: 'var(--color-accent)' }}>
+            <div className="hidden md:block absolute bottom-0 left-0 opacity-90"
+                 style={{width: '500px', height: 'auto'}}
+            >
+                <Image
+                    src="/left_main_illustration.svg"
+                    alt=""
+                    width={400}
+                    height={300}
+                    className="w-full h-auto object-contain"
+                />
+            </div>
+
+            <div className="hidden md:block absolute bottom-0 right-0 opacity-90"
+                 style={{width: '400px', height: 'auto'}}>
+                <Image
+                    src="/right_main_illustration.svg"
+                    alt=""
+                    width={400}
+                    height={300}
+                    className="w-full h-auto object-contain"
+                />
+            </div>
+
+            <div className="max-w-sm sm:max-w-md w-full text-center relative z-10">
+                <div className="flex justify-center">
+                    <Link href="/" className="transition-opacity hover:opacity-80">
+                        <Logo size="lg" />
+                    </Link>
+                </div>
+
+                <div className="space-y-6 sm:space-y-3">
+                    <h1
+                        className="text-3xl sm:text-4xl font-heading"
+                        style={{ color: 'var(--color-accent)' }}
+                    >
                         Registrar
                     </h1>
-                    <p className="text-sm opacity-70" style={{ color: 'var(--color-accent)' }}>
+                    <p
+                        className="text-base sm:text-lg px-2 mb-6"
+                        style={{ color: 'var(--color-accent)' }}
+                    >
                         Crie sua conta para começar a jogar!
                     </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <Input
-                        type="text"
-                        label="Nome"
-                        placeholder="Seu nome"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        fullWidth
-                    />
-
-                    <Input
-                        type="email"
-                        label="Email"
-                        placeholder="seu@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        fullWidth
-                    />
-
-                    <Input
-                        type="password"
-                        label="Senha"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        fullWidth
-                    />
-
-                    <Input
-                        type="password"
-                        label="Confirmar Senha"
-                        placeholder="••••••••"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        required
-                        fullWidth
-                    />
-
-                    {error && (
-                        <div
-                            className="p-3 rounded-lg text-sm"
-                            style={{
-                                backgroundColor: 'rgba(243, 129, 129, 0.1)',
-                                color: 'var(--color-error)'
-                            }}
-                        >
-                            {error}
+                <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 backdrop-blur-sm">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label
+                                htmlFor="name"
+                                className="block text-sm font-medium mb-2 text-left"
+                                style={{ color: 'var(--color-accent)' }}
+                            >
+                                Nome
+                            </label>
+                            <input
+                                id="name"
+                                type="text"
+                                placeholder="Seu nome"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                required
+                                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
+                            />
                         </div>
-                    )}
 
-                    <Button
-                        type="submit"
-                        variant="primary"
-                        fullWidth
-                        isLoading={isLoading}
-                    >
-                        Criar Conta
-                    </Button>
+                        <div>
+                            <label
+                                htmlFor="email"
+                                className="block text-sm font-medium mb-2 text-left"
+                                style={{ color: 'var(--color-accent)' }}
+                            >
+                                Email
+                            </label>
+                            <input
+                                id="email"
+                                type="email"
+                                placeholder="seu@email.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
+                            />
+                        </div>
 
-                    <div className="text-center text-sm" style={{ color: 'var(--color-accent)' }}>
-                        Já tem conta?{" "}
-                        <Link
-                            href="/login"
-                            className="font-semibold hover:underline"
-                            style={{ color: 'var(--color-primary)' }}
-                        >
-                            Entrar
-                        </Link>
-                    </div>
-                </form>
-            </Card>
+                        <div>
+                            <label
+                                htmlFor="password"
+                                className="block text-sm font-medium mb-2 text-left"
+                                style={{ color: 'var(--color-accent)' }}
+                            >
+                                Senha
+                            </label>
+                            <input
+                                id="password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label
+                                htmlFor="confirmPassword"
+                                className="block text-sm font-medium mb-2 text-left"
+                                style={{ color: 'var(--color-accent)' }}
+                            >
+                                Confirmar Senha
+                            </label>
+                            <input
+                                id="confirmPassword"
+                                type="password"
+                                placeholder="••••••••"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
+                                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
+                            />
+                        </div>
+
+                        {error && (
+                            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                                <p className="text-red-600 text-sm">{error}</p>
+                            </div>
+                        )}
+
+                        <div className="pt-2">
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                fullWidth
+                                isLoading={isLoading}
+                                className="py-3 text-lg font-semibold"
+                            >
+                                Criar Conta
+                            </Button>
+                        </div>
+
+                        <div className="text-center pt-4">
+                            <p className="text-gray-600 text-sm">
+                                Já tem conta?{" "}
+                                <Link
+                                    href="/login"
+                                    className="font-semibold hover:underline transition-colors"
+                                    style={{ color: 'var(--color-primary)' }}
+                                >
+                                    Entrar
+                                </Link>
+                            </p>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </main>
     );
 }

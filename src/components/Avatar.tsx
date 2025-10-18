@@ -9,7 +9,7 @@ interface AvatarProps {
 export default function Avatar({name, src, size = "md", online = false }: AvatarProps) {
     const sizeStyles = {
         sm: "w-8 h-8 text-sm",
-        md: "w-12 h-12 text-lg",
+        md: "w-12 h-12 text-md",
         lg: "w-16 h-16 text-2xl",
     };
 

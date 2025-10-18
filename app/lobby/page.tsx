@@ -6,7 +6,9 @@ import { useStore } from "@/stores/store";
 import Button from "@/components/Button";
 import Avatar from "@/components/Avatar";
 import Badge from "@/components/Badge";
+import Logo from "@/components/Logo";
 import CreateTableModal from "@/components/CreateTableModal";
+import UsersModal from "@/components/UsersModal";
 import InviteToast from "@/components/InviteToast";
 import { toast } from "sonner";
 import { User, Invite } from "@/types";
@@ -31,7 +33,9 @@ export default function LobbyPage() {
 
     const [message, setMessage] = useState("");
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [showUsersModal, setShowUsersModal] = useState(false);
     const toastIdRef = useRef<string | number | null>(null);
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
     const handleCreateTable = (tableName: string, invitedUsers: User[]) => {
         const invitedUserIds = invitedUsers.map((u) => u.id);
@@ -41,13 +45,6 @@ export default function LobbyPage() {
             description: `Convites enviados para ${invitedUsers.length} jogadores`,
         });
     };
-
-    // COMENTAR TEMPORARIAMENTE PARA TESTES
-    // useEffect(() => {
-    //   if (!isAuthenticated) {
-    //     router.push("/login");
-    //   }
-    // }, [isAuthenticated, router]);
 
     useEffect(() => {
         if (user && isAuthenticated) {
@@ -75,13 +72,13 @@ export default function LobbyPage() {
                 <InviteToast
                     invite={pendingInvite}
                     onAccept={() => {
-                        console.log("Convite aceito!");
+                        console.log("Invite accepted!");
                         acceptInvite();
                         toast.dismiss(toastIdRef.current!);
                         toast.success("Convite aceito! Entrando na mesa...");
                     }}
                     onReject={() => {
-                        console.log("Convite recusado!");
+                        console.log("Invite rejected!");
                         rejectInvite();
                         toast.dismiss(toastIdRef.current!);
                         toast.info("Convite recusado");
@@ -101,7 +98,10 @@ export default function LobbyPage() {
         };
     }, [pendingInvite, acceptInvite, rejectInvite]);
 
-    // MOCK DIRETO (temporário)
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chatMessages]);
+
     const mockUser = user || {
         id: "1",
         name: "Você (Mock)",
@@ -116,7 +116,8 @@ export default function LobbyPage() {
         { id: "5", name: "Ana Lima", email: "ana@teste.com", isOnline: true },
     ];
 
-    const handleSendMessage = () => {
+    const handleSendMessage = (e: React.FormEvent) => {
+        e.preventDefault();
         if (message.trim()) {
             sendChatMessage(message);
             setMessage("");
@@ -132,190 +133,215 @@ export default function LobbyPage() {
         };
 
         useStore.getState().setPendingInvite(mockInvite);
-        console.log("Convite simulado criado:", mockInvite);
+        console.log("Mock invite created!");
     };
 
     return (
-        <div
-            className="min-h-screen"
-            style={{ backgroundColor: "var(--color-background)" }}
-        >
-            {/* Header */}
-            <header className="shadow-md" style={{ backgroundColor: "white" }}>
-                <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div
-                            className="w-12 h-12 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: "var(--color-primary)" }}
-                        >
-                            <span className="text-2xl">🐵</span>
-                        </div>
-                        <div>
-                            <h1
-                                className="text-2xl font-heading"
-                                style={{ color: "var(--color-accent)" }}
-                            >
-                                Mímico
-                            </h1>
-                            <p
-                                className="text-sm opacity-70"
-                                style={{ color: "var(--color-accent)" }}
-                            >
-                                Salão de Jogos
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <Avatar name={mockUser.name} size="sm" online />
-                            <span
-                                className="text-sm font-medium"
-                                style={{ color: "var(--color-accent)" }}
-                            >
-                {mockUser.name}
-              </span>
-                        </div>
-                        <Button variant="ghost" onClick={logout}>
-                            Sair
-                        </Button>
-                    </div>
-                </div>
-            </header>
-
-            {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 py-8">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Online Users */}
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-card shadow-lg p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2
-                                    className="text-xl font-heading"
-                                    style={{ color: "var(--color-accent)" }}
-                                >
-                                    🟢 Usuários Online
-                                </h2>
-                                <Badge variant="success">{mockOnlineUsers.length} online</Badge>
+        <>
+            <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
+                <header className="bg-white shadow-sm px-4 py-3 flex-shrink-0">
+                    <div className="max-w-6xl mx-auto flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <Logo size="md" />
+                            <div>
+                                <h1 className="text-xl font-heading" style={{ color: "var(--color-accent)" }}>
+                                    Mímico
+                                </h1>
                             </div>
+                        </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <Avatar name={mockUser.name} size="sm" online />
+                                <span className="text-sm font-medium hidden sm:block" style={{ color: "var(--color-accent)" }}>
+                                    {mockUser.name}
+                                </span>
+                            </div>
+                            <Button variant="ghost" onClick={logout} className="text-sm">
+                                Sair
+                            </Button>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="flex-1 flex max-w-6xl mx-auto w-full pt-4 pb-4 gap-4">
+                    <div className="hidden md:flex w-72 bg-white rounded-lg shadow-lg flex-col">
+                        <div className="p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
+                                    Online
+                                </h2>
+                                <Badge variant="teal">{mockOnlineUsers.length}</Badge>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-4">
+                            <div className="space-y-1">
                                 {mockOnlineUsers.map((onlineUser) => (
                                     <div
                                         key={onlineUser.id}
-                                        className="flex items-center gap-3 p-3 rounded-lg hover:shadow-md transition-shadow"
-                                        style={{ backgroundColor: "var(--color-background)" }}
+                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                                     >
-                                        <Avatar name={onlineUser.name} size="md" online />
+                                        <Avatar name={onlineUser.name} size="sm" online />
                                         <div className="flex-1 min-w-0">
-                                            <p
-                                                className="font-medium truncate"
-                                                style={{ color: "var(--color-accent)" }}
-                                            >
+                                            <p className="font-medium truncate text-sm" style={{ color: "var(--color-accent)" }}>
                                                 {onlineUser.name}
                                             </p>
+                                            <p className="text-xs text-gray-500">Online</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Create Table Button */}
-                        <div className="mt-6">
+                        <div className="p-4 space-y-2">
                             <Button
                                 variant="primary"
                                 fullWidth
                                 onClick={() => setIsCreateModalOpen(true)}
                             >
-                                + Criar Mesa
+                                Criar Mesa
                             </Button>
-                        </div>
 
-                        {/* BOTÃO DE TESTE - REMOVER EM PRODUÇÃO */}
-                        <div className="mt-3">
-                            <Button variant="secondary" fullWidth onClick={handleTestInvite}>
-                                🧪 Simular Convite (Teste)
+                            <Button
+                                variant="secondary"
+                                fullWidth
+                                onClick={handleTestInvite}
+                                className="text-xs"
+                            >
+                                Simular Convite
                             </Button>
                         </div>
                     </div>
 
-                    {/* Chat Global */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-white rounded-card shadow-lg p-6 h-[600px] flex flex-col">
-                            <h2
-                                className="text-xl font-heading mb-4"
-                                style={{ color: "var(--color-accent)" }}
-                            >
-                                💬 Chat Global
-                            </h2>
+                    <div className="flex-1 flex flex-col bg-white rounded-lg shadow-lg">
+                        <div className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-lg sm:text-xl font-semibold" style={{ color: "var(--color-accent)" }}>
+                                        Chat Global
+                                    </h2>
+                                    <p className="text-sm text-gray-500 hidden sm:block">
+                                        Converse com outros jogadores online
+                                    </p>
+                                </div>
 
-                            {/* Messages Area */}
-                            <div className="flex-1 overflow-y-auto mb-4 space-y-3">
-                                {chatMessages.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <p
-                                            className="text-sm opacity-70"
-                                            style={{ color: "var(--color-accent)" }}
-                                        >
-                                            Nenhuma mensagem ainda
+                                <div className="md:hidden">
+                                    <button
+                                        onClick={() => setShowUsersModal(true)}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                                    >
+                                        <Badge variant="teal">{mockOnlineUsers.length} online</Badge>
+                                        <span className="text-lg">👥</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="md:hidden px-4 pb-4">
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="primary"
+                                    onClick={() => setIsCreateModalOpen(true)}
+                                    className="flex-1"
+                                >
+                                    Criar Mesa
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    onClick={handleTestInvite}
+                                    className="flex-1 text-xs"
+                                >
+                                    Simular Convite
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {chatMessages.length === 0 ? (
+                                <div className="flex-1 flex items-center justify-center">
+                                    <div className="text-center">
+                                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                            <span className="text-2xl">💬</span>
+                                        </div>
+                                        <p className="text-gray-500 text-lg mb-2">Nenhuma mensagem ainda</p>
+                                        <p className="text-gray-400 text-sm">
+                                            Seja o primeiro a iniciar uma conversa!
                                         </p>
                                     </div>
-                                ) : (
-                                    chatMessages.map((msg) => (
-                                        <div key={msg.id} className="flex gap-2">
+                                </div>
+                            ) : (
+                                <>
+                                    {chatMessages.map((msg) => (
+                                        <div key={msg.id} className="flex gap-3">
                                             <Avatar name={msg.userName} size="sm" />
-                                            <div className="flex-1">
-                                                <p
-                                                    className="text-sm font-semibold"
-                                                    style={{ color: "var(--color-accent)" }}
-                                                >
-                                                    {msg.userName}
-                                                </p>
-                                                <p
-                                                    className="text-sm"
-                                                    style={{ color: "var(--color-accent)" }}
-                                                >
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>
+                                                        {msg.userName}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {new Date(msg.timestamp).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm leading-relaxed break-words" style={{ color: "var(--color-accent)" }}>
                                                     {msg.message}
                                                 </p>
                                             </div>
                                         </div>
-                                    ))
-                                )}
-                            </div>
+                                    ))}
+                                    <div ref={chatEndRef} />
+                                </>
+                            )}
+                        </div>
 
-                            {/* Input Area */}
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Digite uma mensagem..."
-                                    value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
-                                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                                    className="flex-1 px-4 py-2 border-2 rounded-lg focus:outline-none"
-                                    style={{
-                                        borderColor: "var(--color-accent)",
-                                        color: "var(--color-accent)",
-                                    }}
-                                />
-                                <button
-                                    onClick={handleSendMessage}
-                                    className="px-4 py-2 rounded-lg font-semibold text-white"
-                                    style={{ backgroundColor: "var(--color-primary)" }}
+                        <div className="p-4">
+                            <form onSubmit={handleSendMessage} className="flex gap-2 sm:gap-3">
+                                <div className="flex-1">
+                                    <input
+                                        type="text"
+                                        placeholder="Digite uma mensagem..."
+                                        value={message}
+                                        onChange={(e) => setMessage(e.target.value)}
+                                        className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm sm:text-base"
+                                        style={{ color: "var(--color-accent)" }}
+                                        maxLength={500}
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={!message.trim()}
+                                    variant="teal"
+                                    className="px-4 sm:px-6"
                                 >
                                     Enviar
-                                </button>
-                            </div>
+                                </Button>
+                            </form>
                         </div>
                     </div>
                 </div>
-            </main>
+            </div>
 
-            <CreateTableModal
-                isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
-                onlineUsers={mockOnlineUsers}
-                onCreateTable={handleCreateTable}
-            />
-        </div>
+            {isCreateModalOpen && (
+                <CreateTableModal
+                    isOpen={isCreateModalOpen}
+                    onClose={() => setIsCreateModalOpen(false)}
+                    onlineUsers={mockOnlineUsers}
+                    onCreateTable={handleCreateTable}
+                />
+            )}
+
+            {showUsersModal && (
+                <UsersModal
+                    isOpen={showUsersModal}
+                    onClose={() => setShowUsersModal(false)}
+                    users={mockOnlineUsers}
+                    onCreateTable={() => {
+                        setShowUsersModal(false);
+                        setIsCreateModalOpen(true);
+                    }}
+                />
+            )}
+        </>
     );
 }
