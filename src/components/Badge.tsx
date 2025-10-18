@@ -1,11 +1,12 @@
-import { ReactNode } from "react";
+import {ReactNode} from "react";
 
 interface BadgeProps {
-    children: ReactNode;
-    variant?: "default" | "success" | "error" | "warning";
+    children: ReactNode,
+    variant?: "default" | "success" | "error" | "warning",
+    className?: string
 }
 
-export default function Badge({ children, variant = "default" }: BadgeProps) {
+export default function Badge({children, variant = "default", className}: BadgeProps) {
     const colors = {
         default: "var(--color-accent)",
         success: "var(--color-success)",
@@ -16,7 +17,7 @@ export default function Badge({ children, variant = "default" }: BadgeProps) {
     return (
         <span
             className="inline-block px-3 py-1 text-xs font-semibold rounded-full text-white"
-            style={{ backgroundColor: colors[variant] }}
+            style={{backgroundColor: colors[variant]}}
         >
       {children}
     </span>

@@ -1,11 +1,12 @@
 interface AvatarProps {
-    name: string;
-    src?: string;
-    size?: "sm" | "md" | "lg";
-    online?: boolean;
+    name: string,
+    src?: string,
+    size?: "sm" | "md" | "lg",
+    online?: boolean,
+    showOnline?: boolean
 }
 
-export default function Avatar({ name, src, size = "md", online = false }: AvatarProps) {
+export default function Avatar({name, src, size = "md", online = false }: AvatarProps) {
     const sizeStyles = {
         sm: "w-8 h-8 text-sm",
         md: "w-12 h-12 text-lg",
@@ -23,10 +24,10 @@ export default function Avatar({ name, src, size = "md", online = false }: Avata
         <div className="relative inline-block">
             <div
                 className={`${sizeStyles[size]} rounded-full flex items-center justify-center font-bold text-white overflow-hidden`}
-                style={{ backgroundColor: 'var(--color-primary)' }}
+                style={{backgroundColor: 'var(--color-primary)'}}
             >
                 {src ? (
-                    <img src={src} alt={name} className="w-full h-full object-cover" />
+                    <img src={src} alt={name} className="w-full h-full object-cover"/>
                 ) : (
                     <span>{initials}</span>
                 )}
@@ -34,7 +35,7 @@ export default function Avatar({ name, src, size = "md", online = false }: Avata
             {online && (
                 <span
                     className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
-                    style={{ backgroundColor: 'var(--color-success)' }}
+                    style={{backgroundColor: 'var(--color-success)'}}
                 />
             )}
         </div>
