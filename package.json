@@ -14,6 +14,7 @@
     "next-intl": "^4.3.12",
     "peerjs": "^1.5.5",
     "react": "19.1.0",
+    "react-country-flag": "^3.1.0",
     "react-dom": "19.1.0",
     "sockjs-client": "^1.6.1",
     "sonner": "^2.0.7",
