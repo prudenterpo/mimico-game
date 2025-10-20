@@ -1,19 +1,19 @@
 interface AvatarProps {
-    name: string,
+    nickname: string,
     src?: string,
     size?: "sm" | "md" | "lg",
     online?: boolean,
     showOnline?: boolean
 }
 
-export default function Avatar({name, src, size = "md", online = false }: AvatarProps) {
+export default function Avatar({nickname, src, size = "md", online = false }: AvatarProps) {
     const sizeStyles = {
         sm: "w-8 h-8 text-sm",
         md: "w-12 h-12 text-md",
         lg: "w-16 h-16 text-2xl",
     };
 
-    const initials = name
+    const initials = nickname
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -27,7 +27,7 @@ export default function Avatar({name, src, size = "md", online = false }: Avatar
                 style={{backgroundColor: 'var(--color-primary)'}}
             >
                 {src ? (
-                    <img src={src} alt={name} className="w-full h-full object-cover"/>
+                    <img src={src} alt={nickname} className="w-full h-full object-cover"/>
                 ) : (
                     <span>{initials}</span>
                 )}

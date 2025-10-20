@@ -103,10 +103,10 @@ export default function CreateTableModal({
                                             borderColor: isSelected ? "var(--color-primary)" : "transparent",
                                         }}
                                     >
-                                        <Avatar name={user.name} size="md" online={user.isOnline} />
+                                        <Avatar nickname={user.nickname} size="md" online={user.isOnline} />
                                         <div className="flex-1">
                                             <p className="font-medium" style={{ color: "var(--color-accent)" }}>
-                                                {user.name}
+                                                {user.nickname}
                                             </p>
                                             <p className="text-xs opacity-70" style={{ color: "var(--color-accent)" }}>
                                                 {user.email}

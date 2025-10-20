@@ -82,13 +82,13 @@ export default function WaitingRoomPage() {
                 {player ? (
                     <div className="space-y-3">
                         <Avatar
-                            name={player.name}
+                            nickname={player.nickname}
                             size="lg"
                             online
                         />
                         <div>
                             <p className="font-medium text-sm" style={{ color: "var(--color-accent)" }}>
-                                {player.name}
+                                {player.nickname}
                             </p>
                             {readyPlayers.includes(player.id) ? (
                                 <Badge variant="teal" className="mt-1">Pronto</Badge>
@@ -229,7 +229,7 @@ export default function WaitingRoomPage() {
                             <>
                                 {tableChatMessages.map((msg, index) => (
                                     <div key={index} className="flex gap-3">
-                                        <Avatar name={msg.userName} size="sm" />
+                                        <Avatar nickname={msg.userName} size="sm" />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>
