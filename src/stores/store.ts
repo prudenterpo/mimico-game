@@ -48,14 +48,20 @@ export const useStore = create<Store>((set, get) => ({
 
     login: async (email: string, password: string) => {
         try {
-            const response = await api.post<{ user: User; token: string }>("/auth/login", {
+            const { token, userId, nickname } = await api.post<{ token: string; userId: string; nickname: string }>("/auth/login", {
                 email,
                 password,
             });
 
-            const { user, token } = response.data;
 
             api.setToken(token);
+
+            const user: User = {
+                id: userId,
+                nickname: nickname,
+                email,
+                isOnline: true,
+            };
 
             set({
                 user,
@@ -68,14 +74,10 @@ export const useStore = create<Store>((set, get) => ({
         }
     },
 
+
     register: async (nickname: string, email: string, password: string) => {
         try {
-            await api.post("/auth/register", {
-                nickname,
-                email,
-                password,
-            });
-
+            await api.post("/auth/register", { nickname, email, password });
             await get().login(email, password);
         } catch (error) {
             console.error("Register error:", error);
@@ -196,7 +198,7 @@ export const useStore = create<Store>((set, get) => ({
 
         stompClient.publish("/app/lobby/chat", {
             userId: user.id,
-            userName: user.name,
+            userName: user.nickname,
             message,
             timestamp: new Date().toISOString(),
         });
@@ -306,7 +308,7 @@ export const useStore = create<Store>((set, get) => ({
         stompClient.publish("/app/table/chat", {
             tableId: currentTable.id,
             userId: user.id,
-            userName: user.name,
+            userName: user.nickname,
             message,
             timestamp: new Date().toISOString(),
         });
@@ -332,18 +334,18 @@ if (typeof window !== "undefined") {
     useStore.setState({
         user: {
             id: "1",
-            name: "Você (Mock)",
+            nickname: "Você (Mock)",
             email: "voce@teste.com",
             isOnline: true,
         },
         token: "mock-token-12345",
         isAuthenticated: true,
         onlineUsers: [
-            { id: "2", name: "João Silva", email: "joao@teste.com", isOnline: true },
-            { id: "3", name: "Maria Santos", email: "maria@teste.com", isOnline: true },
-            { id: "4", name: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
-            { id: "5", name: "Ana Lima", email: "ana@teste.com", isOnline: true },
-            { id: "6", name: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
+            { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
+            { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
+            { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
+            { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
+            { id: "6", nickname: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
         ],
     });
 }
