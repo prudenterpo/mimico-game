@@ -5,7 +5,7 @@ import { stompClient } from "@/lib/stomp";
 
 interface Store extends AuthState {
     login: (email: string, password: string) => Promise<void>;
-    register: (name: string, email: string, password: string) => Promise<void>;
+    register: (nickname: string, email: string, password: string) => Promise<void>;
     logout: () => void;
     setUser: (user: User | null) => void;
 
@@ -68,10 +68,10 @@ export const useStore = create<Store>((set, get) => ({
         }
     },
 
-    register: async (name: string, email: string, password: string) => {
+    register: async (nickname: string, email: string, password: string) => {
         try {
             await api.post("/auth/register", {
-                name,
+                nickname,
                 email,
                 password,
             });
