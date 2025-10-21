@@ -55,7 +55,7 @@ export default function CreateTableModal({
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title="🎮 Criar Nova Mesa"
+            title="Criar Nova Mesa"
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose}>
@@ -70,10 +70,11 @@ export default function CreateTableModal({
             <div className="space-y-6">
                 <Input
                     label="Nome da Mesa"
-                    placeholder="Ex: Diversão Garantida"
+                    placeholder="Ex: Mesa dos Silvas"
                     value={tableName}
                     onChange={(e) => setTableName(e.target.value)}
                     fullWidth
+                    autoFocus
                 />
 
                 <div>
