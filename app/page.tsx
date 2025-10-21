@@ -55,6 +55,13 @@ export default function Home() {
                             </Button>
                         </Link>
                     </div>
+                    <div className="max-w-xs mx-auto">
+                        <Link href="/about">
+                            <Button variant="outlined" fullWidth>
+                                Sobre o jogo
+                            </Button>
+                        </Link>
+                    </div>
 
                     <div className="text-center pt-2">
                         <p className="text-base">
