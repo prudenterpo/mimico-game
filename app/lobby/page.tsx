@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/stores/store";
 import Button from "@/components/Button";
@@ -45,6 +45,23 @@ export default function LobbyPage() {
             description: `Convites enviados para ${invitedUsers.length} jogadores`,
         });
     };
+
+    useEffect(() => {
+        console.log("🔍 Online users data:", onlineUsers);
+        if (onlineUsers && onlineUsers.length > 0) {
+            console.log("Online users details:");
+            onlineUsers.forEach((user, index) => {
+                console.log(`User ${index}:`, {
+                    id: user?.id,
+                    nickname: user?.nickname,
+                    hasId: !!user?.id,
+                    hasNickname: !!user?.nickname
+                });
+            });
+        } else {
+            console.log("No online users or empty array");
+        }
+    }, [onlineUsers]);
 
     useEffect(() => {
         if (user && isAuthenticated) {
@@ -102,20 +119,6 @@ export default function LobbyPage() {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chatMessages]);
 
-    const mockUser = user || {
-        id: "1",
-        nickname: "Você (Mock)",
-        email: "voce@teste.com",
-        isOnline: true,
-    };
-
-    const mockOnlineUsers = onlineUsers.length > 0 ? onlineUsers : [
-        { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
-        { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
-        { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
-        { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
-    ];
-
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (message.trim()) {
@@ -155,9 +158,9 @@ export default function LobbyPage() {
 
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                                <Avatar nickname={mockUser.nickname} size="sm" online />
+                                <Avatar nickname={user?.nickname || ""} size="sm" online />
                                 <span className="text-sm font-medium hidden sm:block" style={{ color: "var(--color-accent)" }}>
-                                    {mockUser.nickname}
+                                    {user?.nickname}
                                 </span>
                             </div>
                             <Button variant="ghost" onClick={logout} className="text-sm">
@@ -174,26 +177,31 @@ export default function LobbyPage() {
                                 <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
                                     Online
                                 </h2>
-                                <Badge variant="teal">{mockOnlineUsers.length}</Badge>
+                                <Badge variant="teal">{onlineUsers.length}</Badge>
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-4">
                             <div className="space-y-1">
-                                {mockOnlineUsers.map((onlineUser) => (
-                                    <div
-                                        key={onlineUser.id}
-                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                                    >
-                                        <Avatar nickname={onlineUser.nickname} size="sm" online />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-medium truncate text-sm" style={{ color: "var(--color-accent)" }}>
-                                                {onlineUser.nickname}
-                                            </p>
-                                            <p className="text-xs text-gray-500">Online</p>
+                                {onlineUsers.map((onlineUser, index) => {
+                                    const safeKey = onlineUser?.id ? onlineUser.id : `user-${index}`;
+
+                                    return (
+                                        <div
+                                            key={safeKey}
+                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                                        >
+                                            <Avatar nickname={onlineUser.nickname} size="sm" online/>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium truncate text-sm"
+                                                   style={{color: "var(--color-accent)"}}>
+                                                    {onlineUser.nickname}
+                                                </p>
+                                                <p className="text-xs text-gray-500">Online</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -234,7 +242,7 @@ export default function LobbyPage() {
                                         onClick={() => setShowUsersModal(true)}
                                         className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
                                     >
-                                        <Badge variant="teal">{mockOnlineUsers.length} online</Badge>
+                                        <Badge variant="teal">{onlineUsers.length} online</Badge>
                                         <span className="text-lg">👥</span>
                                     </button>
                                 </div>
@@ -329,7 +337,7 @@ export default function LobbyPage() {
                 <CreateTableModal
                     isOpen={isCreateModalOpen}
                     onClose={() => setIsCreateModalOpen(false)}
-                    onlineUsers={mockOnlineUsers}
+                    onlineUsers={onlineUsers}
                     onCreateTable={handleCreateTable}
                 />
             )}
@@ -338,7 +346,7 @@ export default function LobbyPage() {
                 <UsersModal
                     isOpen={showUsersModal}
                     onClose={() => setShowUsersModal(false)}
-                    users={mockOnlineUsers}
+                    users={onlineUsers}
                     onCreateTable={() => {
                         setShowUsersModal(false);
                         setIsCreateModalOpen(true);
