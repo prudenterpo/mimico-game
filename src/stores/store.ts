@@ -53,7 +53,6 @@ export const useStore = create<Store>((set, get) => ({
                 password,
             });
 
-
             api.setToken(token);
 
             const user: User = {
@@ -74,7 +73,6 @@ export const useStore = create<Store>((set, get) => ({
         }
     },
 
-
     register: async (nickname: string, email: string, password: string) => {
         try {
             await api.post("/auth/register", { nickname, email, password });
@@ -88,6 +86,7 @@ export const useStore = create<Store>((set, get) => ({
     logout: () => {
         get().disconnectWebSocket();
         api.setToken(null);
+        stompClient.setToken(null);
         set({
             user: null,
             token: null,
@@ -106,11 +105,9 @@ export const useStore = create<Store>((set, get) => ({
         set({ user });
     },
 
-    // Lobby Initial State
     onlineUsers: [],
     chatMessages: [],
 
-    // Lobby Actions
     setOnlineUsers: (users: User[]) => {
         set({ onlineUsers: users });
     },
@@ -125,7 +122,6 @@ export const useStore = create<Store>((set, get) => ({
         set({ chatMessages: [] });
     },
 
-    // WebSocket Actions
     connectWebSocket: () => {
         const token = get().token;
         if (!token) {
@@ -139,47 +135,80 @@ export const useStore = create<Store>((set, get) => ({
             () => {
                 console.log("Connected to WebSocket");
 
-                // Subscribe to online users updates
                 stompClient.subscribe("/topic/lobby/users", (message) => {
-                    const users = JSON.parse(message.body);
-                    set({ onlineUsers: users });
+                    if (message.type === "ONLINE_USERS_UPDATE") {
+                        const users = message.users || [];
+                        set({ onlineUsers: users });
+                    }
                 });
 
-                // Subscribe to chat messages
                 stompClient.subscribe("/topic/lobby/chat", (message) => {
-                    const chatMessage = JSON.parse(message.body);
-                    get().addChatMessage(chatMessage);
+                    if (message.type === "LOBBY_CHAT_MESSAGE") {
+                        const chatMessage: ChatMessage = {
+                            id: message.id || Date.now().toString(),
+                            userId: message.userId,
+                            userName: message.userName,
+                            message: message.message,
+                            timestamp: message.timestamp
+                        };
+                        get().addChatMessage(chatMessage);
+                    }
                 });
 
-                // Subscribe to table invites
                 stompClient.subscribe("/user/queue/invite", (message) => {
-                    const invite = JSON.parse(message.body);
-                    set({ pendingInvite: invite });
+                    if (message.type === "GAME_INVITE") {
+                        const inviteData = message.data;
+                        const invite: Invite = {
+                            id: inviteData.id || Date.now().toString(),
+                            tableId: inviteData.tableId,
+                            tableName: inviteData.tableName,
+                            hostId: inviteData.hostId,
+                            hostName: inviteData.hostName,
+                            invitedUserId: inviteData.invitedUserId,
+                            expiresAt: new Date(Date.now() + (inviteData.expiresIn * 1000))
+                        };
+                        set({ pendingInvite: invite });
+                    }
                 });
 
-                // Subscribe to current table updates (waiting room)
                 stompClient.subscribe("/user/queue/table/players", (message) => {
-                    const players = JSON.parse(message.body);
-                    get().setCurrentTablePlayers(players);
+                    if (message.type === "TABLE_PLAYERS_UPDATE") {
+                        const players = message.players || [];
+                        get().setCurrentTablePlayers(players);
+                    }
                 });
 
                 stompClient.subscribe("/user/queue/table/ready", (message) => {
-                    const readyPlayerIds = JSON.parse(message.body);
-                    get().setReadyPlayers(readyPlayerIds);
+                    if (message.type === "READY_STATUS_UPDATE") {
+                        const readyPlayerIds = message.readyPlayers || [];
+                        get().setReadyPlayers(readyPlayerIds);
+                    }
                 });
 
                 stompClient.subscribe("/user/queue/table/chat", (message) => {
-                    const chatMessage = JSON.parse(message.body);
-                    get().addTableChatMessage(chatMessage);
+                    if (message.type === "TABLE_CHAT_MESSAGE") {
+                        const chatMessage: ChatMessage = {
+                            id: message.id || Date.now().toString(),
+                            userId: message.userId,
+                            userName: message.userName,
+                            message: message.message,
+                            timestamp: message.timestamp
+                        };
+                        get().addTableChatMessage(chatMessage);
+                    }
                 });
 
                 stompClient.subscribe("/user/queue/table/start", (message) => {
-                    const { tableId } = JSON.parse(message.body);
-                    // Router será chamado no useEffect da página
-                    console.log("Game starting for table:", tableId);
+                    if (message.type === "GAME_STARTING") {
+                        const { tableId } = message;
+                        console.log("Game starting for table:", tableId);
+                    }
                 });
 
-                // Notify server that user is online
+                stompClient.subscribe("/user/queue/errors", (message) => {
+                    console.error("WebSocket error:", message.message);
+                });
+
                 stompClient.publish("/app/lobby/join", {});
             },
             (error) => {
@@ -204,24 +233,25 @@ export const useStore = create<Store>((set, get) => ({
         });
     },
 
-    // Tables Initial State
     currentTable: null,
     pendingInvite: null,
 
-    // Waiting Room Initial State
     currentTablePlayers: [],
     readyPlayers: [],
     tableChatMessages: [],
 
-    // Tables Actions
     createTable: (tableName: string, invitedUserIds: string[]) => {
         const user = get().user;
         if (!user) return;
 
-        stompClient.publish("/app/table/create", {
-            tableName,
-            hostId: user.id,
-            invitedUserIds,
+        const tableId = crypto.randomUUID();
+
+        invitedUserIds.forEach(invitedUserId => {
+            stompClient.publish("/app/table/invite", {
+                tableId,
+                tableName,
+                invitedUserId: invitedUserId,
+            });
         });
     },
 
@@ -242,7 +272,7 @@ export const useStore = create<Store>((set, get) => ({
             currentTable: {
                 id: invite.tableId,
                 name: invite.tableName,
-                hostId: "",
+                hostId: invite.hostId,
                 players: [],
                 status: "waiting",
                 createdAt: new Date(),
@@ -261,7 +291,6 @@ export const useStore = create<Store>((set, get) => ({
         set({ pendingInvite: null });
     },
 
-    // Waiting Room Actions
     setCurrentTablePlayers: (players: User[]) => {
         set({ currentTablePlayers: players });
     },
@@ -325,9 +354,6 @@ export const useStore = create<Store>((set, get) => ({
     },
 }));
 
-// ========================================
-// MOCK TEMPORÁRIO - REMOVER EM PRODUÇÃO
-// ========================================
 if (typeof window !== "undefined") {
     localStorage.setItem("token", "mock-token-12345");
 

@@ -126,6 +126,9 @@ export default function LobbyPage() {
 
     const handleTestInvite = () => {
         const mockInvite: Invite = {
+            id: 23,
+            hostId: "dfdsf",
+            invitedUserId: 3234,
             tableId: "table-123",
             tableName: "Mesa do João",
             hostName: "João Silva",
