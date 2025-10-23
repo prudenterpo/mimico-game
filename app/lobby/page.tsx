@@ -104,16 +104,16 @@ export default function LobbyPage() {
 
     const mockUser = user || {
         id: "1",
-        name: "Você (Mock)",
+        nickname: "Você (Mock)",
         email: "voce@teste.com",
         isOnline: true,
     };
 
     const mockOnlineUsers = onlineUsers.length > 0 ? onlineUsers : [
-        { id: "2", name: "João Silva", email: "joao@teste.com", isOnline: true },
-        { id: "3", name: "Maria Santos", email: "maria@teste.com", isOnline: true },
-        { id: "4", name: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
-        { id: "5", name: "Ana Lima", email: "ana@teste.com", isOnline: true },
+        { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
+        { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
+        { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
+        { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
     ];
 
     const handleSendMessage = (e: React.FormEvent) => {
@@ -126,6 +126,9 @@ export default function LobbyPage() {
 
     const handleTestInvite = () => {
         const mockInvite: Invite = {
+            id: 23,
+            hostId: "dfdsf",
+            invitedUserId: 3234,
             tableId: "table-123",
             tableName: "Mesa do João",
             hostName: "João Silva",
@@ -152,9 +155,9 @@ export default function LobbyPage() {
 
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                                <Avatar name={mockUser.name} size="sm" online />
+                                <Avatar nickname={mockUser.nickname} size="sm" online />
                                 <span className="text-sm font-medium hidden sm:block" style={{ color: "var(--color-accent)" }}>
-                                    {mockUser.name}
+                                    {mockUser.nickname}
                                 </span>
                             </div>
                             <Button variant="ghost" onClick={logout} className="text-sm">
@@ -182,10 +185,10 @@ export default function LobbyPage() {
                                         key={onlineUser.id}
                                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                                     >
-                                        <Avatar name={onlineUser.name} size="sm" online />
+                                        <Avatar nickname={onlineUser.nickname} size="sm" online />
                                         <div className="flex-1 min-w-0">
                                             <p className="font-medium truncate text-sm" style={{ color: "var(--color-accent)" }}>
-                                                {onlineUser.name}
+                                                {onlineUser.nickname}
                                             </p>
                                             <p className="text-xs text-gray-500">Online</p>
                                         </div>
@@ -274,7 +277,7 @@ export default function LobbyPage() {
                                 <>
                                     {chatMessages.map((msg) => (
                                         <div key={msg.id} className="flex gap-3">
-                                            <Avatar name={msg.userName} size="sm" />
+                                            <Avatar nickname={msg.userName} size="sm" />
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>

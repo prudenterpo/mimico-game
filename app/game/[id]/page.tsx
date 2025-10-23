@@ -25,7 +25,7 @@ export default function GamePage() {
     const [message, setMessage] = useState("");
 
     const { user } = useStore();
-    const mockUser = user || { id: "1", name: "Você (Mock)", email: "voce@teste.com", isOnline: true };
+    const mockUser = user || { id: "1", nickname: "Você (Mock)", email: "voce@teste.com", isOnline: true };
 
     useEffect(() => {
         if (gamePhase === 'mime' && timeLeft > 0) {
@@ -192,7 +192,7 @@ export default function GamePage() {
                         <div className="grid grid-cols-3 gap-2">
                             {['Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
                                 <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
-                                    <Avatar name={name} size="sm" />
+                                    <Avatar nickname={name} size="sm" />
                                 </div>
                             ))}
                         </div>
@@ -378,7 +378,7 @@ export default function GamePage() {
                                 <div className="grid grid-cols-3 gap-2">
                                     {['Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
                                         <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
-                                            <Avatar name={name} size="sm" />
+                                            <Avatar nickname={name} size="sm" />
                                         </div>
                                     ))}
                                 </div>
@@ -387,7 +387,7 @@ export default function GamePage() {
                             <div className="grid grid-cols-2 gap-2">
                                 {['João Silva', 'Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
                                     <div key={index} className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
-                                        <Avatar name={name} size="md" />
+                                        <Avatar nickname={name} size="md" />
                                     </div>
                                 ))}
                             </div>

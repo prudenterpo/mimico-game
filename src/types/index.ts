@@ -1,20 +1,17 @@
-// User Types
 export interface User {
     id: string;
-    name: string;
+    nickname: string;
     email: string;
     avatar?: string;
-    isOnline: boolean;
+    isOnline?: boolean;
 }
 
-// Auth Types
 export interface AuthState {
     user: User | null;
     token: string | null;
     isAuthenticated: boolean;
 }
 
-// Lobby Types
 export interface ChatMessage {
     id: string;
     userId: string;
@@ -23,7 +20,6 @@ export interface ChatMessage {
     timestamp: Date;
 }
 
-// Table Types
 export interface GameTable {
     id: string;
     name: string;
@@ -33,15 +29,16 @@ export interface GameTable {
     createdAt: Date;
 }
 
-// Invite Types
 export interface Invite {
+    id: number;
     tableId: string;
     tableName: string;
     hostName: string;
+    hostId: string;
+    invitedUserId: number;
     expiresAt: Date;
 }
 
-// Match Types
 export type Team = "A" | "B";
 
 export interface Player {
@@ -63,7 +60,6 @@ export interface MatchState {
     roundNumber: number;
 }
 
-// Word Types
 export type WordCategory = "eu_sou" | "eu_faco" | "objeto";
 
 export interface Word {
@@ -73,7 +69,6 @@ export interface Word {
     difficulty: 1 | 2 | 3;
 }
 
-// API Response Types
 export interface ApiResponse<T> {
     data: T;
     message?: string;

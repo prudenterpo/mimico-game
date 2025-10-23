@@ -24,7 +24,7 @@ class ApiClient {
         }
     }
 
-    private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
             ...(options.headers as Record<string, string>),
@@ -39,35 +39,40 @@ class ApiClient {
             headers,
         });
 
-        const data = await response.json();
+        let data: any = null;
+        try {
+            data = await response.json();
+        } catch {
+            data = null;
+        }
 
         if (!response.ok) {
             console.error("API Error:", data);
-            throw new Error(data.message || "Erro na requisição");
+            throw new Error(data?.message || `Erro na requisição: ${response.status}`);
         }
 
-        return data;
+        return data as T;
     }
 
-    async get<T>(endpoint: string): Promise<ApiResponse<T>> {
+    async get<T>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, { method: "GET" });
     }
 
-    async post<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
+    async post<T>(endpoint: string, body?: any): Promise<T> {
         return this.request<T>(endpoint, {
             method: "POST",
-            body: JSON.stringify(body),
+            body: body ? JSON.stringify(body) : undefined,
         });
     }
 
-    async put<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
+    async put<T>(endpoint: string, body?: any): Promise<T> {
         return this.request<T>(endpoint, {
             method: "PUT",
-            body: JSON.stringify(body),
+            body: body ? JSON.stringify(body) : undefined,
         });
     }
 
-    async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
+    async delete<T>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, { method: "DELETE" });
     }
 }

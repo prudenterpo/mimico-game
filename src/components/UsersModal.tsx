@@ -59,10 +59,10 @@ export default function UsersModal({ isOpen, onClose, users, onCreateTable }: Us
                                 key={user.id}
                                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
                             >
-                                <Avatar name={user.name} size="md" online />
+                                <Avatar nickname={user.nickname} size="md" online />
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium text-sm" style={{ color: "var(--color-accent)" }}>
-                                        {user.name}
+                                        {user.nickname}
                                     </p>
                                     <p className="text-xs text-gray-500">Online</p>
                                 </div>
