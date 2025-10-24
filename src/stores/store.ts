@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { User, AuthState, ChatMessage, GameTable, Invite } from "@/types";
+import {User, AuthState, ChatMessage, GameTable, Invite, UserProfileResponse} from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
 
@@ -39,6 +39,8 @@ interface Store extends AuthState {
     sendTableChatMessage: (message: string) => void;
     addTableChatMessage: (message: ChatMessage) => void;
     clearTableChat: () => void;
+
+    restoreAuth: () => Promise<void>;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -67,6 +69,9 @@ export const useStore = create<Store>((set, get) => ({
                 token,
                 isAuthenticated: true,
             });
+
+            localStorage.setItem("token", token);
+
         } catch (error) {
             console.error("Login error:", error);
             throw error;
@@ -100,6 +105,36 @@ export const useStore = create<Store>((set, get) => ({
             tableChatMessages: [],
         });
     },
+
+    restoreAuth: async () => {
+        const token = localStorage.getItem("token");
+
+        if (!token) return;
+
+        try {
+            api.setToken(token);
+
+            const userProfile = await api.get<UserProfileResponse>("/auth/me");
+
+            const user = {
+                id: userProfile.userId,
+                nickname: userProfile.nickname,
+                email: userProfile.email,
+                isOnline: true,
+            };
+
+            set({
+                user,
+                token,
+                isAuthenticated: true,
+            });
+        } catch (error) {
+            console.error("Failed to restore auth:", error);
+            localStorage.removeItem("token");
+            api.setToken(null);
+        }
+    },
+
 
     setUser: (user: User | null) => {
         set({ user });

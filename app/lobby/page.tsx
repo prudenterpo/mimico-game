@@ -28,7 +28,8 @@ export default function LobbyPage() {
         pendingInvite,
         acceptInvite,
         rejectInvite,
-        currentTable
+        currentTable,
+        restoreAuth
     } = useStore();
 
     const [message, setMessage] = useState("");
@@ -47,23 +48,6 @@ export default function LobbyPage() {
     };
 
     useEffect(() => {
-        console.log("🔍 Online users data:", onlineUsers);
-        if (onlineUsers && onlineUsers.length > 0) {
-            console.log("Online users details:");
-            onlineUsers.forEach((user, index) => {
-                console.log(`User ${index}:`, {
-                    id: user?.id,
-                    nickname: user?.nickname,
-                    hasId: !!user?.id,
-                    hasNickname: !!user?.nickname
-                });
-            });
-        } else {
-            console.log("No online users or empty array");
-        }
-    }, [onlineUsers]);
-
-    useEffect(() => {
         if (user && isAuthenticated) {
             connectWebSocket();
         }
@@ -71,7 +55,11 @@ export default function LobbyPage() {
         return () => {
             disconnectWebSocket();
         };
-    }, [user, isAuthenticated, connectWebSocket, disconnectWebSocket]);
+    }, [user, isAuthenticated]);
+
+    useEffect(() => {
+        restoreAuth().catch(console.error);
+    }, []);
 
     useEffect(() => {
         if (currentTable && currentTable.status === "waiting") {
@@ -101,17 +89,11 @@ export default function LobbyPage() {
                         toast.info("Convite recusado");
                     }}
                 />,
-                {
-                    duration: 60000,
-                    closeButton: false,
-                }
+                { duration: 60000, closeButton: false }
             );
         }
-
         return () => {
-            if (toastIdRef.current) {
-                toast.dismiss(toastIdRef.current);
-            }
+            if (toastIdRef.current) toast.dismiss(toastIdRef.current);
         };
     }, [pendingInvite, acceptInvite, rejectInvite]);
 
