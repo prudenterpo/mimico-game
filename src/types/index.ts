@@ -60,6 +60,15 @@ export interface MatchState {
     roundNumber: number;
 }
 
+export interface UserProfileResponse {
+    userId: string;
+    email: string;
+    nickname: string;
+    avatarUrl: string | null;
+    roles: string[];
+    createdAt: string;
+}
+
 export type WordCategory = "eu_sou" | "eu_faco" | "objeto";
 
 export interface Word {

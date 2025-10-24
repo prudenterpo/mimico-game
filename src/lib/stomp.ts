@@ -1,6 +1,7 @@
 import { Client, IMessage } from "@stomp/stompjs";
+import SockJS from "sockjs-client";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:8080/ws";
 
 class StompClient {
     private client: Client | null = null;
@@ -29,7 +30,7 @@ class StompClient {
         }
 
         this.client = new Client({
-            brokerURL: WS_URL.replace("http://", "ws://").replace("https://", "wss://"),
+            webSocketFactory: () => new SockJS(WS_URL),
             connectHeaders: {
                 Authorization: this.token ? `Bearer ${this.token}` : "",
             },

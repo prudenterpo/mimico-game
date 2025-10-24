@@ -13,7 +13,8 @@ export default function Avatar({nickname, src, size = "md", online = false }: Av
         lg: "w-16 h-16 text-2xl",
     };
 
-    const initials = nickname
+    const safeNickname = nickname || "Unknown";
+    const initials = safeNickname
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -27,7 +28,7 @@ export default function Avatar({nickname, src, size = "md", online = false }: Av
                 style={{backgroundColor: 'var(--color-primary)'}}
             >
                 {src ? (
-                    <img src={src} alt={nickname} className="w-full h-full object-cover"/>
+                    <img src={src} alt={safeNickname} className="w-full h-full object-cover"/>
                 ) : (
                     <span>{initials}</span>
                 )}

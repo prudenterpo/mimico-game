@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { User, AuthState, ChatMessage, GameTable, Invite } from "@/types";
+import {User, AuthState, ChatMessage, GameTable, Invite, UserProfileResponse} from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
 
@@ -39,6 +39,8 @@ interface Store extends AuthState {
     sendTableChatMessage: (message: string) => void;
     addTableChatMessage: (message: ChatMessage) => void;
     clearTableChat: () => void;
+
+    restoreAuth: () => Promise<void>;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -67,6 +69,9 @@ export const useStore = create<Store>((set, get) => ({
                 token,
                 isAuthenticated: true,
             });
+
+            localStorage.setItem("token", token);
+
         } catch (error) {
             console.error("Login error:", error);
             throw error;
@@ -100,6 +105,36 @@ export const useStore = create<Store>((set, get) => ({
             tableChatMessages: [],
         });
     },
+
+    restoreAuth: async () => {
+        const token = localStorage.getItem("token");
+
+        if (!token) return;
+
+        try {
+            api.setToken(token);
+
+            const userProfile = await api.get<UserProfileResponse>("/auth/me");
+
+            const user = {
+                id: userProfile.userId,
+                nickname: userProfile.nickname,
+                email: userProfile.email,
+                isOnline: true,
+            };
+
+            set({
+                user,
+                token,
+                isAuthenticated: true,
+            });
+        } catch (error) {
+            console.error("Failed to restore auth:", error);
+            localStorage.removeItem("token");
+            api.setToken(null);
+        }
+    },
+
 
     setUser: (user: User | null) => {
         set({ user });
@@ -136,23 +171,66 @@ export const useStore = create<Store>((set, get) => ({
                 console.log("Connected to WebSocket");
 
                 stompClient.subscribe("/topic/lobby/users", (message) => {
-                    if (message.type === "ONLINE_USERS_UPDATE") {
-                        const users = message.users || [];
-                        set({ onlineUsers: users });
+                    console.log("📨 Raw WebSocket message:", message);
+
+                    // Parse the message body if it's a string
+                    let data;
+                    if (typeof message.body === 'string') {
+                        try {
+                            data = JSON.parse(message.body);
+                        } catch (error) {
+                            console.error('Error parsing message body:', error);
+                            return;
+                        }
+                    } else {
+                        data = message;
+                    }
+
+                    console.log("📨 Parsed WebSocket data:", data);
+
+                    if (data.type === "ONLINE_USERS_UPDATE") {
+                        const usersData = data.users || [];
+
+                        if (usersData.length > 0 && typeof usersData[0] === 'string') {
+                            console.log("🔄 Converting user IDs to user objects");
+                            const userObjects = usersData.map((userId: string) => ({
+                                id: userId,
+                                nickname: `User ${userId.slice(0, 8)}`,
+                                email: '',
+                                isOnline: true
+                            }));
+                            get().setOnlineUsers(userObjects);
+                        } else {
+                            get().setOnlineUsers(usersData);
+                        }
                     }
                 });
 
                 stompClient.subscribe("/topic/lobby/chat", (message) => {
-                    if (message.type === "LOBBY_CHAT_MESSAGE") {
-                        const chatMessage: ChatMessage = {
-                            id: message.id || Date.now().toString(),
-                            userId: message.userId,
-                            userName: message.userName,
-                            message: message.message,
-                            timestamp: message.timestamp
-                        };
-                        get().addChatMessage(chatMessage);
+                    console.log("📨 Raw chat message:", message);
+
+                    let data;
+                    if (typeof message.body === 'string') {
+                        try {
+                            data = JSON.parse(message.body);
+                        } catch (error) {
+                            console.error('Error parsing chat message body:', error);
+                            return;
+                        }
+                    } else {
+                        data = message;
                     }
+
+                    console.log("📨 Parsed chat data:", data);
+
+                    const chatMessage: ChatMessage = {
+                        id: data.id || Date.now().toString(),
+                        userId: data.userId,
+                        userName: data.userName || data.nickname,
+                        message: data.message,
+                        timestamp: data.timestamp || new Date().toISOString()
+                    };
+                    get().addChatMessage(chatMessage);
                 });
 
                 stompClient.subscribe("/user/queue/invite", (message) => {
@@ -225,6 +303,8 @@ export const useStore = create<Store>((set, get) => ({
         const user = get().user;
         if (!user) return;
 
+        console.log("Sending message:", { userId: user.id, userName: user.nickname, message });
+
         stompClient.publish("/app/lobby/chat", {
             userId: user.id,
             userName: user.nickname,
@@ -263,7 +343,7 @@ export const useStore = create<Store>((set, get) => ({
         const invite = get().pendingInvite;
         if (!invite) return;
 
-        stompClient.publish("/app/table/invite/accept", {
+        stompClient.publish("app/table/invite/accept", {
             tableId: invite.tableId,
         });
 
@@ -354,24 +434,24 @@ export const useStore = create<Store>((set, get) => ({
     },
 }));
 
-if (typeof window !== "undefined") {
-    localStorage.setItem("token", "mock-token-12345");
-
-    useStore.setState({
-        user: {
-            id: "1",
-            nickname: "Você (Mock)",
-            email: "voce@teste.com",
-            isOnline: true,
-        },
-        token: "mock-token-12345",
-        isAuthenticated: true,
-        onlineUsers: [
-            { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
-            { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
-            { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
-            { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
-            { id: "6", nickname: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
-        ],
-    });
-}
+// if (typeof window !== "undefined") {
+//     localStorage.setItem("token", "mock-token-12345");
+//
+//     useStore.setState({
+//         user: {
+//             id: "1",
+//             nickname: "Você (Mock)",
+//             email: "voce@teste.com",
+//             isOnline: true,
+//         },
+//         token: "mock-token-12345",
+//         isAuthenticated: true,
+//         onlineUsers: [
+//             { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
+//             { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
+//             { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
+//             { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
+//             { id: "6", nickname: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
+//         ],
+//     });
+// }
