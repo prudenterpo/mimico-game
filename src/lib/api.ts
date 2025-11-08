@@ -1,13 +1,13 @@
 import { ApiResponse } from "@/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 class ApiClient {
     private readonly baseUrl: string;
     private token: string | null = null;
 
     constructor(baseUrl: string) {
-        this.baseUrl = baseUrl;
+        this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
         if (typeof window !== "undefined") {
             this.token = localStorage.getItem("token");
         }
