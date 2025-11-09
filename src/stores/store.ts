@@ -27,8 +27,7 @@ interface Store extends AuthState {
     readyPlayers: string[];
     tableChatMessages: ChatMessage[];
 
-    createTable: (tableName: string, invitedUserIds: string[]) => Promise<void>;
-    connectToTable: (tableId: string) => void;
+    createTable: (tableName: string, invitedUserIds: string[]) => void;
     setPendingInvite: (invite: Invite | null) => void;
     acceptInvite: () => void;
     rejectInvite: () => void;
@@ -145,11 +144,7 @@ export const useStore = create<Store>((set, get) => ({
     chatMessages: [],
 
     setOnlineUsers: (users: User[]) => {
-        const currentUser = get().user;
-        const filteredUsers = currentUser
-            ? users.filter(user => user.id !== currentUser.id)
-            : users;
-        set({ onlineUsers: filteredUsers });
+        set({ onlineUsers: users });
     },
 
     addChatMessage: (message: ChatMessage) => {
@@ -178,6 +173,7 @@ export const useStore = create<Store>((set, get) => ({
                 stompClient.subscribe("/topic/lobby/users", (message) => {
                     console.log("📨 Raw WebSocket message:", message);
 
+                    // Parse the message body if it's a string
                     let data;
                     if (typeof message.body === 'string') {
                         try {
@@ -299,26 +295,6 @@ export const useStore = create<Store>((set, get) => ({
         );
     },
 
-    connectToTable: (tableId: string) => {
-        stompClient.subscribe(`/topic/table/${tableId}/player-accepted`, (message) => {
-            console.log("Player accepted:", message);
-        });
-
-        stompClient.subscribe(`/topic/table/${tableId}/status`, (message) => {
-            const data = JSON.parse(message.body);
-            if (data.type === "TABLE_STATUS") {
-                console.log("Table status:", data.acceptedCount + "/" + data.requiredCount);
-            }
-        });
-
-        stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
-        });
-
-        stompClient.subscribe(`/topic/table/${tableId}/match-started`, (message) => {
-            console.log("Match started!");
-        });
-    },
-
     disconnectWebSocket: () => {
         stompClient.disconnect();
     },
@@ -344,31 +320,19 @@ export const useStore = create<Store>((set, get) => ({
     readyPlayers: [],
     tableChatMessages: [],
 
-    createTable: async (tableName: string, invitedUserIds: string[]) => {
+    createTable: (tableName: string, invitedUserIds: string[]) => {
         const user = get().user;
         if (!user) return;
 
-        try {
-            const tableResponse = await api.post<{ id: string; name: string }>("/tables", {
-                name: tableName
+        const tableId = crypto.randomUUID();
+
+        invitedUserIds.forEach(invitedUserId => {
+            stompClient.publish("/app/table/invite", {
+                tableId,
+                tableName,
+                invitedUserId: invitedUserId,
             });
-
-            const tableId = tableResponse.id;
-
-            invitedUserIds.forEach(invitedUserId => {
-                stompClient.publish("/app/table/invite", {
-                    tableId: tableId,
-                    tableName: tableName,
-                    invitedUserId: invitedUserId,
-                });
-            });
-
-            console.log("Table created and invites have been sent:", tableId);
-
-        } catch (error) {
-            console.error("Error while creating table:", error);
-            throw error;
-        }
+        });
     },
 
     setPendingInvite: (invite: Invite | null) => {
