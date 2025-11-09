@@ -26,6 +26,8 @@ export default function WaitingRoomPage() {
         leaveTable,
         sendTableChatMessage,
         clearTableChat,
+        connectToTable,
+        connectWebSocket
     } = useStore();
 
     const [message, setMessage] = useState("");
@@ -47,15 +49,31 @@ export default function WaitingRoomPage() {
     }, [currentTable, router]);
 
     useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [tableChatMessages]);
+
+    useEffect(() => {
         return () => {
             clearTableChat();
         };
     }, [clearTableChat]);
 
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [tableChatMessages]);
+        if (!currentTable || !tableId) return;
 
+        const setupTableConnection = async () => {
+            console.log("Setting up table connection...");
+
+            connectWebSocket();
+
+            setTimeout(() => {
+                connectToTable(tableId);
+                console.log("Connected to table:", tableId);
+            }, 1000);
+        };
+
+        setupTableConnection();
+    }, [currentTable, tableId, connectWebSocket, connectToTable]);
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (message.trim()) {
@@ -72,7 +90,7 @@ export default function WaitingRoomPage() {
     const teamA = currentTablePlayers.slice(0, 2);
     const teamB = currentTablePlayers.slice(2, 4);
 
-    const createPlayerSlots = (team: User[], teamName: string, teamColor: string) => {
+    const createPlayerSlots = (team: User[], teamName: string) => {
         const slots: (User | null)[] = [...team];
         while (slots.length < 2) {
             slots.push(null);
@@ -115,7 +133,6 @@ export default function WaitingRoomPage() {
 
     return (
         <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
-            {/* Header */}
             <header className="bg-white shadow-sm px-4 py-3 flex-shrink-0">
                 <div className="max-w-6xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -153,7 +170,7 @@ export default function WaitingRoomPage() {
                             </Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-6">
-                            {createPlayerSlots(teamA, "A", "teal")}
+                            {createPlayerSlots(teamA, "A")}
                         </div>
                     </div>
 
@@ -177,7 +194,7 @@ export default function WaitingRoomPage() {
                             </Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-6">
-                            {createPlayerSlots(teamB, "B", "amber")}
+                            {createPlayerSlots(teamB, "B")}
                         </div>
                     </div>
 

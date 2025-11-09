@@ -28,6 +28,7 @@ interface Store extends AuthState {
     tableChatMessages: ChatMessage[];
 
     createTable: (tableName: string, invitedUserIds: string[]) => Promise<void>;
+    connectToTable: (tableId: string) => void;
     setPendingInvite: (invite: Invite | null) => void;
     acceptInvite: () => void;
     rejectInvite: () => void;
@@ -296,6 +297,26 @@ export const useStore = create<Store>((set, get) => ({
                 console.error("WebSocket connection error:", error);
             }
         );
+    },
+
+    connectToTable: (tableId: string) => {
+        stompClient.subscribe(`/topic/table/${tableId}/player-accepted`, (message) => {
+            console.log("Player accepted:", message);
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/status`, (message) => {
+            const data = JSON.parse(message.body);
+            if (data.type === "TABLE_STATUS") {
+                console.log("Table status:", data.acceptedCount + "/" + data.requiredCount);
+            }
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/match-started`, (message) => {
+            console.log("Match started!");
+        });
     },
 
     disconnectWebSocket: () => {
