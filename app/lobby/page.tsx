@@ -109,21 +109,6 @@ export default function LobbyPage() {
         }
     };
 
-    const handleTestInvite = () => {
-        const mockInvite: Invite = {
-            id: 23,
-            hostId: "dfdsf",
-            invitedUserId: 3234,
-            tableId: "table-123",
-            tableName: "Mesa do João",
-            hostName: "João Silva",
-            expiresAt: new Date(Date.now() + 60000),
-        };
-
-        useStore.getState().setPendingInvite(mockInvite);
-        console.log("Mock invite created!");
-    };
-
     return (
         <>
             <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
@@ -195,15 +180,6 @@ export default function LobbyPage() {
                             >
                                 Criar Mesa
                             </Button>
-
-                            <Button
-                                variant="secondary"
-                                fullWidth
-                                onClick={handleTestInvite}
-                                className="text-xs"
-                            >
-                                Simular Convite
-                            </Button>
                         </div>
                     </div>
 
@@ -240,13 +216,6 @@ export default function LobbyPage() {
                                 >
                                     Criar Mesa
                                 </Button>
-                                <Button
-                                    variant="secondary"
-                                    onClick={handleTestInvite}
-                                    className="flex-1 text-xs"
-                                >
-                                    Simular Convite
-                                </Button>
                             </div>
                         </div>
 
@@ -265,24 +234,33 @@ export default function LobbyPage() {
                                 </div>
                             ) : (
                                 <>
-                                    {chatMessages.map((msg) => (
-                                        <div key={msg.id} className="flex gap-3">
-                                            <Avatar nickname={msg.userName} size="sm" />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
+                                    {chatMessages.map((msg) => {
+                                        const isOwnMessage = msg.userId === user?.id;
+                                        return (
+                                            <div key={msg.id} className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
+                                                <Avatar nickname={msg.userName} size="sm" />
+                                                <div className={`flex-1 min-w-0 ${isOwnMessage ? 'text-right' : ''}`}>
+                                                    <div className={`flex items-center gap-2 mb-1 ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
                                                     <span className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>
-                                                        {msg.userName}
+                                                        {isOwnMessage ? 'Você' : msg.userName}
                                                     </span>
-                                                    <span className="text-xs text-gray-500">
+                                                        <span className="text-xs text-gray-500">
                                                         {new Date(msg.timestamp).toLocaleTimeString()}
                                                     </span>
+                                                    </div>
+                                                    <div className={`inline-block px-3 py-2 rounded-lg max-w-xs ${
+                                                        isOwnMessage
+                                                            ? 'bg-teal-100 text-teal-800 ml-auto'
+                                                            : 'bg-gray-100 text-gray-800'
+                                                    }`}>
+                                                        <p className="text-sm leading-relaxed break-words">
+                                                            {msg.message}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <p className="text-sm leading-relaxed break-words" style={{ color: "var(--color-accent)" }}>
-                                                    {msg.message}
-                                                </p>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                     <div ref={chatEndRef} />
                                 </>
                             )}

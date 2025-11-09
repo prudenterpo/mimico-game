@@ -27,7 +27,7 @@ interface Store extends AuthState {
     readyPlayers: string[];
     tableChatMessages: ChatMessage[];
 
-    createTable: (tableName: string, invitedUserIds: string[]) => void;
+    createTable: (tableName: string, invitedUserIds: string[]) => Promise<void>;
     setPendingInvite: (invite: Invite | null) => void;
     acceptInvite: () => void;
     rejectInvite: () => void;
@@ -144,7 +144,11 @@ export const useStore = create<Store>((set, get) => ({
     chatMessages: [],
 
     setOnlineUsers: (users: User[]) => {
-        set({ onlineUsers: users });
+        const currentUser = get().user;
+        const filteredUsers = currentUser
+            ? users.filter(user => user.id !== currentUser.id)
+            : users;
+        set({ onlineUsers: filteredUsers });
     },
 
     addChatMessage: (message: ChatMessage) => {
@@ -173,7 +177,6 @@ export const useStore = create<Store>((set, get) => ({
                 stompClient.subscribe("/topic/lobby/users", (message) => {
                     console.log("📨 Raw WebSocket message:", message);
 
-                    // Parse the message body if it's a string
                     let data;
                     if (typeof message.body === 'string') {
                         try {
@@ -320,19 +323,31 @@ export const useStore = create<Store>((set, get) => ({
     readyPlayers: [],
     tableChatMessages: [],
 
-    createTable: (tableName: string, invitedUserIds: string[]) => {
+    createTable: async (tableName: string, invitedUserIds: string[]) => {
         const user = get().user;
         if (!user) return;
 
-        const tableId = crypto.randomUUID();
-
-        invitedUserIds.forEach(invitedUserId => {
-            stompClient.publish("/app/table/invite", {
-                tableId,
-                tableName,
-                invitedUserId: invitedUserId,
+        try {
+            const tableResponse = await api.post<{ id: string; name: string }>("/tables", {
+                name: tableName
             });
-        });
+
+            const tableId = tableResponse.id;
+
+            invitedUserIds.forEach(invitedUserId => {
+                stompClient.publish("/app/table/invite", {
+                    tableId: tableId,
+                    tableName: tableName,
+                    invitedUserId: invitedUserId,
+                });
+            });
+
+            console.log("Table created and invites have been sent:", tableId);
+
+        } catch (error) {
+            console.error("Error while creating table:", error);
+            throw error;
+        }
     },
 
     setPendingInvite: (invite: Invite | null) => {

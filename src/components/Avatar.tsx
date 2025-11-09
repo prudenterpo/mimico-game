@@ -13,6 +13,28 @@ export default function Avatar({nickname, src, size = "md", online = false }: Av
         lg: "w-16 h-16 text-2xl",
     };
 
+    const getAvatarColor = (nickname: string) => {
+        const colors = [
+            '#FF6B6B',
+            '#4ECDC4',
+            '#45B7D1',
+            '#96CEB4',
+            '#FFEAA7',
+            '#DDA0DD',
+            '#98D8C8',
+            '#F7DC6F',
+            '#BB8FCE',
+            '#85C1E9'
+        ];
+
+        let hash = 0;
+        for (let i = 0; i < nickname.length; i++) {
+            hash = nickname.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        return colors[Math.abs(hash) % colors.length];
+    };
+
     const safeNickname = nickname || "Unknown";
     const initials = safeNickname
         .split(" ")
@@ -21,11 +43,13 @@ export default function Avatar({nickname, src, size = "md", online = false }: Av
         .toUpperCase()
         .slice(0, 2);
 
+    const avatarColor = getAvatarColor(safeNickname);
+
     return (
         <div className="relative inline-block">
             <div
                 className={`${sizeStyles[size]} rounded-full flex items-center justify-center font-bold text-white overflow-hidden`}
-                style={{backgroundColor: 'var(--color-primary)'}}
+                style={{backgroundColor: avatarColor}}
             >
                 {src ? (
                     <img src={src} alt={safeNickname} className="w-full h-full object-cover"/>
