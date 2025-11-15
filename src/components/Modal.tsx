@@ -25,7 +25,7 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
     if (!isOpen) return null;
 
     return (
-        <divqt
+        <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
             onClick={onClose}
@@ -56,6 +56,6 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
                     </div>
                 )}
             </div>
-        </divqt>
+        </div>
     );
 }
