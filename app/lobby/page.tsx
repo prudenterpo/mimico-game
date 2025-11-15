@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+
 import { useRouter } from "next/navigation";
 import { useStore } from "@/stores/store";
 import Button from "@/components/Button";
@@ -12,6 +13,8 @@ import UsersModal from "@/components/UsersModal";
 import InviteToast from "@/components/InviteToast";
 import { toast } from "sonner";
 import { User, Invite } from "@/types";
+import Modal from "@/components/Modal";
+import {ArrowLeftEndOnRectangleIcon} from "@heroicons/react/20/solid";
 
 export default function LobbyPage() {
     const router = useRouter();
@@ -35,6 +38,7 @@ export default function LobbyPage() {
     const [message, setMessage] = useState("");
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [showUsersModal, setShowUsersModal] = useState(false);
+    const [showLogoutModal, setShowLogoutModal] = useState(false);
     const toastIdRef = useRef<string | number | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +113,10 @@ export default function LobbyPage() {
         }
     };
 
+    const filterOnlineUsers = (user: User | null) => {
+        return onlineUsers.filter(u => u.id != user?.id);
+    };
+
     return (
         <>
             <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
@@ -130,7 +138,7 @@ export default function LobbyPage() {
                                     {user?.nickname}
                                 </span>
                             </div>
-                            <Button variant="ghost" onClick={logout} className="text-sm">
+                            <Button variant="ghost" onClick={() => setShowLogoutModal(true)} className="text-sm">
                                 Sair
                             </Button>
                         </div>
@@ -297,7 +305,7 @@ export default function LobbyPage() {
                 <CreateTableModal
                     isOpen={isCreateModalOpen}
                     onClose={() => setIsCreateModalOpen(false)}
-                    onlineUsers={onlineUsers}
+                    onlineUsers={filterOnlineUsers(user)}
                     onCreateTable={handleCreateTable}
                 />
             )}
@@ -312,6 +320,39 @@ export default function LobbyPage() {
                         setIsCreateModalOpen(true);
                     }}
                 />
+            )}
+
+            {showLogoutModal && (
+                <Modal
+                    isOpen={showLogoutModal}
+                    onClose={() => setShowLogoutModal(false)}
+                    title={
+                        <div className="flex items-center gap-3">
+                            <ArrowLeftEndOnRectangleIcon className="h-6 w-6 text-[var(--color-accent)]" />
+                            <span className="font-heading text-2xl">Confirmar saída</span>
+                        </div>
+                    }
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setShowLogoutModal(false)}>
+                                Cancelar
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    logout();
+                                    router.push("/");
+                                }}
+                            >
+                                Sair
+                            </Button>
+                        </>
+                    }
+                >
+                    <h3 className="text-lg font-medium text-[var(--color-accent)]">
+                        Tem certeza que deseja sair da sua conta?
+                    </h3>
+                </Modal>
             )}
         </>
     );
