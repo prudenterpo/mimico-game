@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { User, Invite } from "@/types";
 import Modal from "@/components/Modal";
 import {ArrowLeftEndOnRectangleIcon} from "@heroicons/react/20/solid";
+import AppHeader from "@/components/AppHeader";
 
 export default function LobbyPage() {
     const router = useRouter();
@@ -120,30 +121,8 @@ export default function LobbyPage() {
     return (
         <>
             <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
-                <header className="bg-white shadow-sm px-4 py-3 flex-shrink-0">
-                    <div className="max-w-6xl mx-auto flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <Logo size="md" />
-                            <div>
-                                <h1 className="text-xl font-heading" style={{ color: "var(--color-accent)" }}>
-                                    Mímico
-                                </h1>
-                            </div>
-                        </div>
 
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <Avatar nickname={user?.nickname || ""} size="sm" online />
-                                <span className="text-sm font-medium hidden sm:block" style={{ color: "var(--color-accent)" }}>
-                                    {user?.nickname}
-                                </span>
-                            </div>
-                            <Button variant="ghost" onClick={() => setShowLogoutModal(true)} className="text-sm">
-                                Sair
-                            </Button>
-                        </div>
-                    </div>
-                </header>
+                <AppHeader onLogout={() => setShowLogoutModal(true)} subTitle="Lobby" />
 
                 <div className="flex-1 flex max-w-6xl mx-auto w-full pt-4 pb-4 gap-4">
                     <div className="hidden md:flex w-72 bg-white rounded-lg shadow-lg flex-col">
