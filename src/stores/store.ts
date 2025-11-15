@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {User, AuthState, ChatMessage, GameTable, Invite, UserProfileResponse} from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
+import {root} from "postcss";
 
 interface Store extends AuthState {
     login: (email: string, password: string) => Promise<void>;
@@ -55,7 +56,7 @@ export const useStore = create<Store>((set, get) => ({
                 email,
                 password,
             });
-
+            console.log("token do me: " + token);
             api.setToken(token);
 
             const user: User = {
@@ -93,6 +94,8 @@ export const useStore = create<Store>((set, get) => ({
         get().disconnectWebSocket();
         api.setToken(null);
         stompClient.setToken(null);
+        localStorage.removeItem("token");
+        sessionStorage.clear();
         set({
             user: null,
             token: null,
@@ -109,6 +112,8 @@ export const useStore = create<Store>((set, get) => ({
 
     restoreAuth: async () => {
         const token = localStorage.getItem("token");
+        console.log("🔍 RestoreAuth - Token found:", token);
+
 
         if (!token) return;
 
@@ -116,6 +121,7 @@ export const useStore = create<Store>((set, get) => ({
             api.setToken(token);
 
             const userProfile = await api.get<UserProfileResponse>("/auth/me");
+            console.log("🔍 Backend returned profile:", userProfile);
 
             const user = {
                 id: userProfile.userId,
@@ -129,6 +135,7 @@ export const useStore = create<Store>((set, get) => ({
                 token,
                 isAuthenticated: true,
             });
+
         } catch (error) {
             console.error("Failed to restore auth:", error);
             localStorage.removeItem("token");
@@ -336,27 +343,69 @@ export const useStore = create<Store>((set, get) => ({
         });
     },
 
+
     connectToTable: (tableId: string) => {
-        stompClient.subscribe(`/topic/table/${tableId}/players`, (message) => {
-            const players = JSON.parse(message.body);
-            get().setCurrentTablePlayers(players);
+        console.log("🔌 Connecting to table:", tableId);
+
+        stompClient.subscribe(`/topic/table/${tableId}/player-accepted`, (message) => {
+            console.log("📨 Player accepted:", message);
+            let data;
+            if (typeof message.body === 'string') {
+                data = JSON.parse(message.body);
+            } else {
+                data = message;
+            }
+
+            if (data.type === "PLAYER_ACCEPTED") {
+                console.log("✅ Player accepted, refreshing table status");
+            }
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/status`, (message) => {
+            console.log("📨 Table status:", message);
+            let data;
+            if (typeof message.body === 'string') {
+                data = JSON.parse(message.body);
+            } else {
+                data = message;
+            }
+
+            if (data.type === "TABLE_STATUS") {
+                console.log("📊 Table status update:", data.acceptedCount, "/", data.requiredCount);
+                // TODO: Atualizar contagem de jogadores no UI
+            }
         });
 
         stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
-            const readyPlayerIds = JSON.parse(message.body);
-            get().setReadyPlayers(readyPlayerIds);
+            console.log("📨 Ready status:", message);
+            let data;
+            if (typeof message.body === 'string') {
+                data = JSON.parse(message.body);
+            } else {
+                data = message;
+            }
+
+            if (data.type === "READY_STATUS_UPDATE") {
+                const readyPlayerIds = data.readyPlayers || [];
+                get().setReadyPlayers(readyPlayerIds);
+            }
         });
 
-        stompClient.subscribe(`/topic/table/${tableId}/chat`, (message) => {
-            const chatMessage = JSON.parse(message.body);
-            get().addTableChatMessage(chatMessage);
-        });
+        stompClient.subscribe(`/topic/table/${tableId}/match-started`, (message) => {
+            console.log("📨 Match started:", message);
+            let data;
+            if (typeof message.body === 'string') {
+                data = JSON.parse(message.body);
+            } else {
+                data = message;
+            }
 
-        stompClient.subscribe(`/topic/table/${tableId}/start`, (message) => {
-            console.log("Game starting!");
+            if (data.type === "MATCH_STARTED") {
+                console.log("🎮 Game starting!", data.data);
+                // TODO: Redirecionar para /game/${data.data.matchId}
+            }
         });
     },
-
     setPendingInvite: (invite: Invite | null) => {
         set({ pendingInvite: invite });
     },
@@ -365,7 +414,7 @@ export const useStore = create<Store>((set, get) => ({
         const invite = get().pendingInvite;
         if (!invite) return;
 
-        stompClient.publish("app/table/invite/accept", {
+        stompClient.publish("/app/table/invite/accept", {
             tableId: invite.tableId,
         });
 
