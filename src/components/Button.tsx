@@ -9,29 +9,24 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export default function Button({
-                                   children,
-                                   variant = "primary",
-                                   fullWidth = false,
-                                   isLoading = false,
-                                   disabled,
-                                   className = "",
-                                   ...props
-                               }: ButtonProps) {
+   children,
+   variant = "primary",
+   fullWidth = false,
+   isLoading = false,
+   disabled,
+   className = "",
+   ...props
+}: ButtonProps) {
     const baseClasses =
         "font-semibold py-3 px-6 min-h-[44px] flex items-center justify-center transition-all duration-200 rounded-[var(--radius-button)] disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]";
 
     const variants: Record<string, string> = {
-        primary:
-            "bg-[var(--color-primary)] text-white shadow-md hover:shadow-lg hover:opacity-90",
-        secondary:
-            "bg-transparent border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-opacity-10",
-        ghost:
-            "bg-transparent text-[var(--color-accent)] hover:bg-black hover:bg-opacity-5",
+        primary: "bg-[var(--color-primary)] text-white shadow-md hover:shadow-lg hover:opacity-90",
+        secondary: "bg-transparent border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-opacity-10",
+        ghost: "bg-transparent text-[var(--color-accent)] hover:bg-gray hover:bg-opacity-5",
         teal: "bg-[#60BFB2] text-white shadow-md hover:shadow-lg hover:opacity-90",
-        amber:
-            "bg-[#FFB54A] text-white shadow-md hover:shadow-lg hover:opacity-90",
-        outlined:
-            "bg-transparent text-[var(--color-accent)] border-2 border-[#7AD9C1] hover:bg-[#7AD9C122]",
+        amber: "bg-[#FFB54A] text-white shadow-md hover:shadow-lg hover:opacity-90",
+        outlined: "bg-transparent text-[var(--color-accent)] border-2 border-[#7AD9C1] hover:bg-[#7AD9C122]",
     };
 
     const widthClass = fullWidth ? "w-full" : "";
