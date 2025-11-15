@@ -74,6 +74,7 @@ export default function WaitingRoomPage() {
 
         setupTableConnection();
     }, [currentTable, tableId, connectWebSocket, connectToTable]);
+
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (message.trim()) {

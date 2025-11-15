@@ -26,6 +26,7 @@ interface Store extends AuthState {
     currentTablePlayers: User[];
     readyPlayers: string[];
     tableChatMessages: ChatMessage[];
+    connectToTable: (tableId: string) => void;
 
     createTable: (tableName: string, invitedUserIds: string[]) => void;
     setPendingInvite: (invite: Invite | null) => void;
@@ -332,6 +333,27 @@ export const useStore = create<Store>((set, get) => ({
                 tableName,
                 invitedUserId: invitedUserId,
             });
+        });
+    },
+
+    connectToTable: (tableId: string) => {
+        stompClient.subscribe(`/topic/table/${tableId}/players`, (message) => {
+            const players = JSON.parse(message.body);
+            get().setCurrentTablePlayers(players);
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
+            const readyPlayerIds = JSON.parse(message.body);
+            get().setReadyPlayers(readyPlayerIds);
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/chat`, (message) => {
+            const chatMessage = JSON.parse(message.body);
+            get().addTableChatMessage(chatMessage);
+        });
+
+        stompClient.subscribe(`/topic/table/${tableId}/start`, (message) => {
+            console.log("Game starting!");
         });
     },
 
