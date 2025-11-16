@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {User, AuthState, ChatMessage, GameTable, Invite, UserProfileResponse} from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
+import {root} from "postcss";
 
 interface Store extends AuthState {
     login: (email: string, password: string) => Promise<void>;
@@ -180,6 +181,7 @@ export const useStore = create<Store>((set, get) => ({
                 stompClient.subscribe("/topic/lobby/users", (message) => {
                     console.log("📨 Raw WebSocket message:", message);
 
+                    // Parse the message body if it's a string
                     let data;
                     if (typeof message.body === 'string') {
                         try {
@@ -346,6 +348,7 @@ export const useStore = create<Store>((set, get) => ({
         console.log("🔌 Connecting to table:", tableId);
 
         stompClient.subscribe(`/topic/table/${tableId}/player-accepted`, (message) => {
+            console.log("📨 Player accepted:", message);
             let data;
             if (typeof message.body === 'string') {
                 data = JSON.parse(message.body);
@@ -354,7 +357,7 @@ export const useStore = create<Store>((set, get) => ({
             }
 
             if (data.type === "PLAYER_ACCEPTED") {
-                console.log("Player accepted, refreshing table status");
+                console.log("✅ Player accepted, refreshing table status");
             }
         });
 
@@ -368,13 +371,13 @@ export const useStore = create<Store>((set, get) => ({
             }
 
             if (data.type === "TABLE_STATUS") {
-                console.log("Table status update:", data.acceptedCount, "/", data.requiredCount);
+                console.log("📊 Table status update:", data.acceptedCount, "/", data.requiredCount);
                 // TODO: Atualizar contagem de jogadores no UI
             }
         });
 
         stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
-            console.log("Ready status:", message);
+            console.log("📨 Ready status:", message);
             let data;
             if (typeof message.body === 'string') {
                 data = JSON.parse(message.body);
@@ -389,7 +392,7 @@ export const useStore = create<Store>((set, get) => ({
         });
 
         stompClient.subscribe(`/topic/table/${tableId}/match-started`, (message) => {
-            console.log("Match started:", message);
+            console.log("📨 Match started:", message);
             let data;
             if (typeof message.body === 'string') {
                 data = JSON.parse(message.body);
@@ -398,7 +401,7 @@ export const useStore = create<Store>((set, get) => ({
             }
 
             if (data.type === "MATCH_STARTED") {
-                console.log("Game starting!", data.data);
+                console.log("🎮 Game starting!", data.data);
                 // TODO: Redirecionar para /game/${data.data.matchId}
             }
         });
@@ -501,3 +504,25 @@ export const useStore = create<Store>((set, get) => ({
         set({ tableChatMessages: [] });
     },
 }));
+
+// if (typeof window !== "undefined") {
+//     localStorage.setItem("token", "mock-token-12345");
+//
+//     useStore.setState({
+//         user: {
+//             id: "1",
+//             nickname: "Você (Mock)",
+//             email: "voce@teste.com",
+//             isOnline: true,
+//         },
+//         token: "mock-token-12345",
+//         isAuthenticated: true,
+//         onlineUsers: [
+//             { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
+//             { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
+//             { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
+//             { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
+//             { id: "6", nickname: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
+//         ],
+//     });
+// }
