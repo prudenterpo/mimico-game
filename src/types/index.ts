@@ -14,10 +14,10 @@ export interface AuthState {
 
 export interface ChatMessage {
     id: string;
-    userId: string;
+    userId: any;
     userName: string;
     message: string;
-    timestamp: Date;
+    timestamp: string;
 }
 
 export interface GameTable {
@@ -30,7 +30,7 @@ export interface GameTable {
 }
 
 export interface Invite {
-    id: number;
+    id: string;
     tableId: string;
     tableName: string;
     hostName: string;
