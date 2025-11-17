@@ -402,7 +402,7 @@ export const useStore = create<Store>((set, get) => ({
 
             if (data.type === "MATCH_STARTED") {
                 console.log("🎮 Game starting!", data.data);
-                // TODO: Redirecionar para /game/${data.data.matchId}
+                window.location.href = `/table/${tableId}`;
             }
         });
     },
@@ -417,6 +417,8 @@ export const useStore = create<Store>((set, get) => ({
         stompClient.publish("/app/table/invite/accept", {
             tableId: invite.tableId,
         });
+
+        get().connectToTable(invite.tableId);
 
         set({
             pendingInvite: null,
@@ -504,25 +506,3 @@ export const useStore = create<Store>((set, get) => ({
         set({ tableChatMessages: [] });
     },
 }));
-
-// if (typeof window !== "undefined") {
-//     localStorage.setItem("token", "mock-token-12345");
-//
-//     useStore.setState({
-//         user: {
-//             id: "1",
-//             nickname: "Você (Mock)",
-//             email: "voce@teste.com",
-//             isOnline: true,
-//         },
-//         token: "mock-token-12345",
-//         isAuthenticated: true,
-//         onlineUsers: [
-//             { id: "2", nickname: "João Silva", email: "joao@teste.com", isOnline: true },
-//             { id: "3", nickname: "Maria Santos", email: "maria@teste.com", isOnline: true },
-//             { id: "4", nickname: "Pedro Costa", email: "pedro@teste.com", isOnline: true },
-//             { id: "5", nickname: "Ana Lima", email: "ana@teste.com", isOnline: true },
-//             { id: "6", nickname: "Carlos Souza", email: "carlos@teste.com", isOnline: true },
-//         ],
-//     });
-// }
