@@ -39,7 +39,7 @@ class StompClient {
                     console.log("STOMP:", str);
                 }
             },
-            reconnectDelay: 5000,
+            reconnectDelay: 0,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
         });
@@ -74,8 +74,10 @@ class StompClient {
     disconnect() {
         if (this.client) {
             this.subscriptions.clear();
-            this.client.deactivate();
+            this.client.deactivate({ force: true});
             this.connected = false;
+            this.token = null;
+            this.client = null;
             console.log("STOMP Disconnected");
         }
     }

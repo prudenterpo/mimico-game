@@ -8,7 +8,7 @@ import Avatar from "@/components/Avatar";
 import Badge from "@/components/Badge";
 import Logo from "@/components/Logo";
 import Link from "next/link";
-import { User } from "@/types";
+import { PlayerSlot } from "@/types";
 
 export default function WaitingRoomPage() {
     const params = useParams();
@@ -19,8 +19,7 @@ export default function WaitingRoomPage() {
     const {
         user,
         currentTable,
-        currentTablePlayers,
-        readyPlayers,
+        tableSlots,
         tableChatMessages,
         toggleReady,
         leaveTable,
@@ -31,8 +30,11 @@ export default function WaitingRoomPage() {
     } = useStore();
 
     const [message, setMessage] = useState("");
-    const isReady = user ? readyPlayers.includes(user.id) : false;
-    const allReady = currentTablePlayers.length === 4 && readyPlayers.length === 4;
+
+    const mySlot = tableSlots.find(s => s.odUserId === user?.id);
+    const isReady = mySlot?.status === 'ready';
+    const acceptedOrReadyCount = tableSlots.filter(s => s.status === 'accepted' || s.status === 'ready').length;
+    const allReady = tableSlots.length === 4 && tableSlots.every(s => s.status === 'ready');
 
     useEffect(() => {
         if (allReady) {
@@ -62,13 +64,9 @@ export default function WaitingRoomPage() {
         if (!currentTable || !tableId) return;
 
         const setupTableConnection = async () => {
-            console.log("Setting up table connection...");
-
             connectWebSocket();
-
             setTimeout(() => {
                 connectToTable(tableId);
-                console.log("Connected to table:", tableId);
             }, 1000);
         };
 
@@ -88,32 +86,58 @@ export default function WaitingRoomPage() {
         router.push("/lobby");
     };
 
-    const teamA = currentTablePlayers.slice(0, 2);
-    const teamB = currentTablePlayers.slice(2, 4);
-
-    const createPlayerSlots = (team: User[], teamName: string) => {
-        const slots: (User | null)[] = [...team];
-        while (slots.length < 2) {
-            slots.push(null);
+    const getStatusBadge = (status: PlayerSlot['status']) => {
+        switch (status) {
+            case 'ready':
+                return <Badge variant="teal" className="mt-1">Pronto</Badge>;
+            case 'accepted':
+                return <Badge variant="amber" className="mt-1">Aguardando</Badge>;
+            case 'pending':
+                return <Badge variant="amber" className="mt-1">Convidado</Badge>;
+            case 'rejected':
+                return <Badge variant="amber" className="mt-1 bg-red-500">Recusou</Badge>;
+            default:
+                return null;
         }
-        return slots.map((player, index) => (
+    };
+
+    const getSlotBorderColor = (status: PlayerSlot['status']) => {
+        switch (status) {
+            case 'ready':
+                return 'border-teal-500';
+            case 'accepted':
+                return 'border-amber-500';
+            case 'pending':
+                return 'border-gray-300 border-dashed';
+            case 'rejected':
+                return 'border-red-500';
+            default:
+                return 'border-gray-300 border-dashed';
+        }
+    };
+
+    const createPlayerSlots = (slots: PlayerSlot[], startIndex: number, teamName: string) => {
+        const teamSlots: (PlayerSlot | null)[] = [
+            slots[startIndex] || null,
+            slots[startIndex + 1] || null
+        ];
+
+        return teamSlots.map((slot, index) => (
             <div key={`${teamName}-${index}`} className="text-center">
-                {player ? (
+                {slot ? (
                     <div className="space-y-3">
-                        <Avatar
-                            nickname={player.nickname}
-                            size="lg"
-                            online
-                        />
+                        <div className={`rounded-full p-1 border-2 ${getSlotBorderColor(slot.status)} inline-block`}>
+                            <Avatar
+                                nickname={slot.nickname}
+                                size="lg"
+                                online={slot.status !== 'rejected'}
+                            />
+                        </div>
                         <div>
                             <p className="font-medium text-sm" style={{ color: "var(--color-accent)" }}>
-                                {player.nickname}
+                                {slot.nickname}
                             </p>
-                            {readyPlayers.includes(player.id) ? (
-                                <Badge variant="teal" className="mt-1">Pronto</Badge>
-                            ) : (
-                                <Badge variant="amber" className="mt-1">Aguardando</Badge>
-                            )}
+                            {getStatusBadge(slot.status)}
                         </div>
                     </div>
                 ) : (
@@ -160,7 +184,7 @@ export default function WaitingRoomPage() {
                 <div className="w-96 bg-white rounded-lg shadow-lg p-6">
                     <div className="text-center mb-6">
                         <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
-                            Jogadores ({currentTablePlayers.length}/4)
+                            Jogadores ({acceptedOrReadyCount}/4)
                         </h2>
                     </div>
 
@@ -171,7 +195,7 @@ export default function WaitingRoomPage() {
                             </Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-6">
-                            {createPlayerSlots(teamA, "A")}
+                            {createPlayerSlots(tableSlots, 0, "A")}
                         </div>
                     </div>
 
@@ -195,7 +219,7 @@ export default function WaitingRoomPage() {
                             </Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-6">
-                            {createPlayerSlots(teamB, "B")}
+                            {createPlayerSlots(tableSlots, 2, "B")}
                         </div>
                     </div>
 
@@ -204,6 +228,7 @@ export default function WaitingRoomPage() {
                             onClick={toggleReady}
                             variant={isReady ? "teal" : "primary"}
                             fullWidth
+                            disabled={mySlot?.status === 'pending' || mySlot?.status === 'rejected'}
                             className="py-3 text-lg font-semibold"
                         >
                             {isReady ? "Pronto!" : "Marcar como Pronto"}
