@@ -14,14 +14,11 @@ interface CreateTableModalProps {
     onCreateTable: (tableName: string, invitedUsers: User[]) => void;
 }
 
-export default function CreateTableModal({
-     isOpen,
-     onClose,
-     onlineUsers,
-     onCreateTable,
-}: CreateTableModalProps) {
+export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreateTable }: CreateTableModalProps) {
     const [tableName, setTableName] = useState("");
     const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+
+    const canCreate = tableName.trim() !== "" && selectedUsers.length === 3;
 
     const toggleUser = (user: User) => {
         if (selectedUsers.find((u) => u.id === user.id)) {
@@ -34,18 +31,15 @@ export default function CreateTableModal({
     };
 
     const handleCreate = () => {
-        if (!tableName.trim()) {
-            alert("Digite um nome para a mesa");
-            return;
-        }
-
-        if (selectedUsers.length !== 3) {
-            alert("Selecione exatamente 3 jogadores");
-            return;
-        }
+        if (!canCreate) return;
 
         onCreateTable(tableName, selectedUsers);
+        setTableName("");
+        setSelectedUsers([]);
+        onClose();
+    };
 
+    const handleClose = () => {
         setTableName("");
         setSelectedUsers([]);
         onClose();
@@ -54,14 +48,18 @@ export default function CreateTableModal({
     return (
         <Modal
             isOpen={isOpen}
-            onClose={onClose}
+            onClose={handleClose}
             title="Criar Nova Mesa"
             footer={
                 <>
-                    <Button variant="secondary" onClick={onClose}>
+                    <Button variant="secondary" onClick={handleClose}>
                         Cancelar
                     </Button>
-                    <Button variant="primary" onClick={handleCreate}>
+                    <Button
+                        variant="primary"
+                        onClick={handleCreate}
+                        disabled={!canCreate}
+                    >
                         Criar Mesa
                     </Button>
                 </>
@@ -79,7 +77,18 @@ export default function CreateTableModal({
 
                 <div>
                     <label className="block text-sm font-medium mb-3" style={{ color: "var(--color-accent)" }}>
-                        Convidar Jogadores ({selectedUsers.length}/3)
+                        Convidar Jogadores{" "}
+                        <span
+                            style={{
+                                color: selectedUsers.length === 3
+                                    ? "var(--color-success)"
+                                    : "var(--color-accent)",
+                                fontWeight: selectedUsers.length === 3 ? "bold" : "normal"
+                            }}
+                        >
+                            ({selectedUsers.length}/3)
+                            {selectedUsers.length === 3 && " ✓"}
+                        </span>
                     </label>
 
                     {onlineUsers.length === 0 ? (
