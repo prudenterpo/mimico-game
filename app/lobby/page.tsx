@@ -131,13 +131,13 @@ export default function LobbyPage() {
                                 <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
                                     Online
                                 </h2>
-                                <Badge variant="teal">{onlineUsers.length}</Badge>
+                                <Badge variant="teal">{filterOnlineUsers(user).length}</Badge>
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-4">
                             <div className="space-y-1">
-                                {onlineUsers.map((onlineUser, index) => {
+                                {filterOnlineUsers(user).map((onlineUser, index) => {
                                     const safeKey = onlineUser?.id ? onlineUser.id : `user-${index}`;
 
                                     return (
@@ -293,7 +293,7 @@ export default function LobbyPage() {
                 <UsersModal
                     isOpen={showUsersModal}
                     onClose={() => setShowUsersModal(false)}
-                    users={onlineUsers}
+                    users={filterOnlineUsers(user)}
                     onCreateTable={() => {
                         setShowUsersModal(false);
                         setIsCreateModalOpen(true);

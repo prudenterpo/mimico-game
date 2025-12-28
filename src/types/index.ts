@@ -83,3 +83,11 @@ export interface ApiResponse<T> {
     message?: string;
     error?: string;
 }
+
+export type PlayerSlotStatus = 'pending' | 'accepted' | 'rejected' | 'ready';
+
+export interface PlayerSlot {
+    odUserId: string;
+    nickname: string;
+    status: PlayerSlotStatus;
+}

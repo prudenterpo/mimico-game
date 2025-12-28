@@ -8,6 +8,8 @@ import Avatar from "@/components/Avatar";
 import Badge from "@/components/Badge";
 import Logo from "@/components/Logo";
 import Link from "next/link";
+import Modal from "@/components/Modal";
+import { ArrowLeftEndOnRectangleIcon } from "@heroicons/react/20/solid";
 
 export default function GamePage() {
     const params = useParams();
@@ -23,6 +25,7 @@ export default function GamePage() {
     const [teamAPosition, setTeamAPosition] = useState(5);
     const [teamBPosition, setTeamBPosition] = useState(12);
     const [message, setMessage] = useState("");
+    const [showLeaveModal, setShowLeaveModal] = useState(false);
 
     const { user } = useStore();
     const mockUser = user || { id: "1", nickname: "Você (Mock)", email: "voce@teste.com", isOnline: true };
@@ -162,6 +165,13 @@ export default function GamePage() {
                                 <span>Time B: {teamBPosition}</span>
                             </div>
                         </div>
+                        <Button
+                            onClick={() => setShowLeaveModal(true)}
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Sair
+                        </Button>
                     </div>
                 </div>
             </header>
@@ -171,7 +181,7 @@ export default function GamePage() {
                 {gamePhase === 'mime' ? (
                     <div className="bg-white rounded-lg shadow-lg p-4">
                         <div className="mb-3 flex items-center justify-between">
-                            <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
+                            <h3 className="font-semibold" style={{color: "var(--color-accent)"}}>
                                 {currentMime} fazendo mímica
                             </h3>
                             <div className="flex items-center gap-2">
@@ -506,6 +516,37 @@ export default function GamePage() {
                     )}
                 </div>
             </div>
+
+            {showLeaveModal && (
+                <Modal
+                    isOpen={showLeaveModal}
+                    onClose={() => setShowLeaveModal(false)}
+                    title={
+                        <div className="flex items-center gap-3">
+                            <ArrowLeftEndOnRectangleIcon className="h-6 w-6 text-red-600" />
+                            <span className="font-heading text-2xl">Sair da Partida</span>
+                        </div>
+                    }
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setShowLeaveModal(false)}>
+                                Cancelar
+                            </Button>
+                            <Button
+                                variant="primary"
+                                className="bg-red-600 hover:bg-red-700"
+                                onClick={() => router.push("/lobby")}
+                            >
+                                Sair
+                            </Button>
+                        </>
+                    }
+                >
+                    <p className="text-gray-600">
+                        Tem certeza que deseja abandonar a partida? Sua equipe perderá automaticamente.
+                    </p>
+                </Modal>
+            )}
         </div>
     );
 }
