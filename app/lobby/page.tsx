@@ -56,10 +56,6 @@ export default function LobbyPage() {
         if (user && isAuthenticated) {
             connectWebSocket();
         }
-
-        return () => {
-            disconnectWebSocket();
-        };
     }, [user, isAuthenticated]);
 
     useEffect(() => {
