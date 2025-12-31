@@ -134,4 +134,17 @@ class StompClient {
     }
 }
 
+export function parseStompMessage<T = any>(message: any): T | null {
+    try {
+        if (typeof message.body === 'string') {
+            return JSON.parse(message.body);
+        }
+        return message;
+
+    } catch (error) {
+        console.error('Error parsing STOMP message:', error);
+        return null;
+    }
+}
+
 export const stompClient = new StompClient();

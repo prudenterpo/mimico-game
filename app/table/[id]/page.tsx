@@ -21,17 +21,16 @@ export default function WaitingRoomPage() {
         currentTable,
         tableSlots,
         tableChatMessages,
+        isTableCancelled,
         toggleReady,
         leaveTable,
         sendTableChatMessage,
         clearTableChat,
-        connectToTable,
-        connectWebSocket
     } = useStore();
 
     const [message, setMessage] = useState("");
 
-    const mySlot = tableSlots.find(s => s.odUserId === user?.id);
+    const mySlot = tableSlots.find(s => s.userId === user?.id);
     const isReady = mySlot?.status === 'ready';
     const acceptedOrReadyCount = tableSlots.filter(s => s.status === 'accepted' || s.status === 'ready').length;
     const allReady = tableSlots.length === 4 && tableSlots.every(s => s.status === 'ready');
@@ -55,23 +54,16 @@ export default function WaitingRoomPage() {
     }, [tableChatMessages]);
 
     useEffect(() => {
+        if (isTableCancelled) {
+            router.push("/lobby");
+        }
+    }, [isTableCancelled]);
+
+    useEffect(() => {
         return () => {
             clearTableChat();
         };
     }, [clearTableChat]);
-
-    useEffect(() => {
-        if (!currentTable || !tableId) return;
-
-        const setupTableConnection = async () => {
-            connectWebSocket();
-            setTimeout(() => {
-                connectToTable(tableId);
-            }, 1000);
-        };
-
-        setupTableConnection();
-    }, [currentTable, tableId, connectWebSocket, connectToTable]);
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();

@@ -87,7 +87,7 @@ export interface ApiResponse<T> {
 export type PlayerSlotStatus = 'pending' | 'accepted' | 'rejected' | 'ready';
 
 export interface PlayerSlot {
-    odUserId: string;
+    userId: string;
     nickname: string;
     status: PlayerSlotStatus;
 }
