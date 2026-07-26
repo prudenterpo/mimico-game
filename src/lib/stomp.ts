@@ -17,8 +17,12 @@ class StompClient {
 
     setToken(token: string | null) {
         this.token = token;
-        if (typeof window !== "undefined" && token) {
-            localStorage.setItem("token", token);
+        if (typeof window !== "undefined") {
+            if (token) {
+                localStorage.setItem("token", token);
+            } else {
+                localStorage.removeItem("token");
+            }
         }
     }
 

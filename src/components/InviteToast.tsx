@@ -32,10 +32,10 @@ export default function InviteToast({ invite, onAccept, onReject }: InviteToastP
     }, [invite.expiresAt, onReject]);
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-live="polite">
             <div>
                 <p className="font-semibold text-base" style={{ color: 'var(--color-accent)' }}>
-                    🎮 Convite para Jogar!
+                    Convite para jogar
                 </p>
                 <p className="text-sm opacity-80" style={{ color: 'var(--color-accent)' }}>
                     <strong>{invite.hostName}</strong> te convidou para{" "}
@@ -51,7 +51,7 @@ export default function InviteToast({ invite, onAccept, onReject }: InviteToastP
                 color: 'white'
             }}
         >
-          ⏱️ {timeLeft}s
+          Expira em {timeLeft}s
         </span>
 
                 <div className="flex gap-2">

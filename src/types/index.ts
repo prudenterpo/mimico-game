@@ -3,6 +3,7 @@ export interface User {
     nickname: string;
     email: string;
     avatar?: string;
+    roles?: string[];
     isOnline?: boolean;
 }
 
@@ -35,8 +36,57 @@ export interface Invite {
     tableName: string;
     hostName: string;
     hostId: string;
-    invitedUserId: number;
+    invitedUserId: string;
     expiresAt: Date;
+}
+
+export interface ErrorResponse {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    correlationId?: string;
+}
+
+export interface LoginResponse {
+    token: string;
+    user: UserProfileResponse;
+}
+
+export interface RegisterResponse {
+    userId: string;
+    email: string;
+    nickname: string;
+}
+
+export interface OnlineUsersResponse {
+    users: UserProfileResponse[];
+    count: number;
+}
+
+export interface RealtimeEventEnvelope<T = Record<string, unknown>> {
+    type: string;
+    data: T;
+    occurredAt: string;
+}
+
+export interface LobbyMessageEventData {
+    senderUserId: string;
+    senderDisplayName: string;
+    message: string;
+    sentAt: string;
+}
+
+export interface TableInviteEventData {
+    inviteId?: string;
+    id?: string;
+    tableId: string;
+    tableName: string;
+    hostId: string;
+    hostName?: string;
+    hostDisplayName?: string;
+    invitedUserId: string;
+    expiresAt?: string;
+    expiresIn?: number;
 }
 
 export type Team = "A" | "B";
