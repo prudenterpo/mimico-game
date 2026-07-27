@@ -43,7 +43,7 @@ class StompClient {
                     console.log("STOMP:", str);
                 }
             },
-            reconnectDelay: 5000,
+            reconnectDelay: 0,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
         });
@@ -78,8 +78,10 @@ class StompClient {
     disconnect() {
         if (this.client) {
             this.subscriptions.clear();
-            this.client.deactivate();
+            this.client.deactivate({ force: true});
             this.connected = false;
+            this.token = null;
+            this.client = null;
             console.log("STOMP Disconnected");
         }
     }
@@ -133,6 +135,19 @@ class StompClient {
             this.subscriptions.get(destination).unsubscribe();
             this.subscriptions.delete(destination);
         }
+    }
+}
+
+export function parseStompMessage<T = any>(message: any): T | null {
+    try {
+        if (typeof message.body === 'string') {
+            return JSON.parse(message.body);
+        }
+        return message;
+
+    } catch (error) {
+        console.error('Error parsing STOMP message:', error);
+        return null;
     }
 }
 

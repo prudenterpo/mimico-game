@@ -3,36 +3,70 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/stores/store";
+import { stompClient } from "@/lib/stomp";
 import Button from "@/components/Button";
 import Avatar from "@/components/Avatar";
-import Badge from "@/components/Badge";
 import Logo from "@/components/Logo";
 import Link from "next/link";
+import Modal from "@/components/Modal";
+import { ArrowLeftEndOnRectangleIcon } from "@heroicons/react/20/solid";
 
 export default function GamePage() {
     const params = useParams();
     const router = useRouter();
     const gameId = params.id as string;
 
+    const {
+        user,
+        currentTable,
+        abandonMatch,
+        isMatchStarted
+    } = useStore();
+
     const [timeLeft, setTimeLeft] = useState(60);
     const [isRolling, setIsRolling] = useState(false);
     const [diceResult, setDiceResult] = useState<number | null>(null);
-    const [gamePhase, setGamePhase] = useState<'dice' | 'word-selection' | 'mime' | 'waiting'>('dice');
-    const [selectedWords] = useState(['Cachorro', 'Correr', 'Telefone']); // Mock words
-    const [currentMime] = useState('João Silva'); // Mock current mime player
+    const [gamePhase, setGamePhase] = useState<"dice" | "word-selection" | "mime" | "waiting">("dice");
+    const [currentMime] = useState("João Silva");
     const [teamAPosition, setTeamAPosition] = useState(5);
     const [teamBPosition, setTeamBPosition] = useState(12);
     const [message, setMessage] = useState("");
-
-    const { user } = useStore();
-    const mockUser = user || { id: "1", nickname: "Você (Mock)", email: "voce@teste.com", isOnline: true };
+    const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [matchResult, setMatchResult] = useState<{
+        winnerTeam: string;
+        reason: string;
+        abandonedByNickname?: string;
+    } | null>(null);
 
     useEffect(() => {
-        if (gamePhase === 'mime' && timeLeft > 0) {
+        if (isMatchStarted) router.push(`/game/${currentTable?.id}`);
+    }, [isMatchStarted]);
+
+    useEffect(() => {
+        if (gamePhase === "mime" && timeLeft > 0) {
             const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
             return () => clearTimeout(timer);
         }
     }, [timeLeft, gamePhase]);
+
+    useEffect(() => {
+        if (!gameId || !stompClient.isConnected()) return;
+
+        stompClient.subscribe(`/topic/table/${gameId}/match-ended`, (message) => {
+            if (message.type === "MATCH_ENDED") {
+                const data = message.data;
+                setMatchResult({
+                    winnerTeam: data.winnerTeam,
+                    reason: data.reason,
+                    abandonedByNickname: data.abandonedByNickname,
+                });
+            }
+        });
+
+        return () => {
+            stompClient.unsubscribe(`/topic/table/${gameId}/match-ended`);
+        };
+    }, [gameId]);
 
     const handleRollDice = async () => {
         setIsRolling(true);
@@ -40,12 +74,12 @@ export default function GamePage() {
             const result = Math.floor(Math.random() * 6) + 1;
             setDiceResult(result);
             setIsRolling(false);
-            setGamePhase('word-selection');
+            setGamePhase("word-selection");
         }, 2000);
     };
 
     const handleWordSelection = (word: string) => {
-        setGamePhase('mime');
+        setGamePhase("mime");
         setTimeLeft(60);
     };
 
@@ -56,10 +90,56 @@ export default function GamePage() {
         }
     };
 
+    const handleAbandonMatch = () => {
+        if (!currentTable?.id) {
+            console.error("[DEBUG] No currentTable!");
+            return;
+        }
+        abandonMatch(currentTable.id);
+        setShowLeaveModal(false);
+    };
+
+    const generateWindingPath = () => {
+        const coords = [];
+        const rows = 8;
+        const cols = 13;
+        let currentPos = 0;
+
+        for (let col = 0; col < cols && currentPos < 52; col++) {
+            coords.push({ x: 10 + (col * 80) / cols, y: 85 });
+            currentPos++;
+        }
+
+        for (let row = rows - 2; row >= 0 && currentPos < 52; row--) {
+            coords.push({ x: 90, y: 15 + (row * 70) / (rows - 1) });
+            currentPos++;
+        }
+
+        for (let col = cols - 2; col >= 0 && currentPos < 52; col--) {
+            coords.push({ x: 10 + (col * 80) / cols, y: 15 });
+            currentPos++;
+        }
+
+        for (let row = 1; row < rows - 1 && currentPos < 52; row++) {
+            coords.push({ x: 10, y: 15 + (row * 70) / (rows - 1) });
+            currentPos++;
+        }
+
+        let innerMargin = 15;
+        while (currentPos < 52) {
+            coords.push({
+                x: 20 + innerMargin + (currentPos % 4) * 15,
+                y: 30 + innerMargin + Math.floor((currentPos % 8) / 4) * 15,
+            });
+            currentPos++;
+        }
+
+        return coords;
+    };
+
     const createWindingPath = () => {
         const spaces = [];
         const specialTiles = [5, 11, 17, 23, 29, 35, 40, 44, 48, 51];
-
         const pathCoordinates = generateWindingPath();
 
         for (let i = 1; i <= 52; i++) {
@@ -71,68 +151,28 @@ export default function GamePage() {
             spaces.push(
                 <div
                     key={i}
-                    className={`
-                        absolute w-8 h-8 rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all duration-300
-                        ${isSpecial
-                        ? 'bg-amber-100 border-amber-400 text-amber-800'
-                        : 'bg-white border-gray-300 text-gray-600'
-                    }
-                    `}
+                    className={`absolute w-8 h-8 rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                        isSpecial
+                            ? "bg-amber-100 border-amber-400 text-amber-800"
+                            : "bg-white border-gray-300 text-gray-600"
+                    }`}
                     style={{
                         left: `${coord.x}%`,
                         top: `${coord.y}%`,
-                        transform: 'translate(-50%, -50%)'
+                        transform: "translate(-50%, -50%)",
                     }}
                 >
                     {i}
                     {hasTeamA && (
-                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-teal-500 rounded-full border-2 border-white shadow-lg animate-pulse"></div>
+                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-teal-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
                     )}
                     {hasTeamB && (
-                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-orange-500 rounded-full border-2 border-white shadow-lg animate-pulse"></div>
+                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-orange-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
                     )}
                 </div>
             );
         }
         return spaces;
-    };
-
-    const generateWindingPath = () => {
-        const coords = [];
-        const rows = 8;
-        const cols = 13;
-        let currentPos = 0;
-
-        for (let col = 0; col < cols && currentPos < 52; col++) {
-            coords.push({ x: 10 + (col * 80 / cols), y: 85 });
-            currentPos++;
-        }
-
-        for (let row = rows - 2; row >= 0 && currentPos < 52; row--) {
-            coords.push({ x: 90, y: 15 + (row * 70 / (rows - 1)) });
-            currentPos++;
-        }
-
-        for (let col = cols - 2; col >= 0 && currentPos < 52; col--) {
-            coords.push({ x: 10 + (col * 80 / cols), y: 15 });
-            currentPos++;
-        }
-
-        for (let row = 1; row < rows - 1 && currentPos < 52; row++) {
-            coords.push({ x: 10, y: 15 + (row * 70 / (rows - 1)) });
-            currentPos++;
-        }
-
-        let innerMargin = 15;
-        while (currentPos < 52) {
-            coords.push({
-                x: 20 + innerMargin + ((currentPos % 4) * 15),
-                y: 30 + innerMargin + (Math.floor((currentPos % 8) / 4) * 15)
-            });
-            currentPos++;
-        }
-
-        return coords;
     };
 
     return (
@@ -147,35 +187,41 @@ export default function GamePage() {
                             <h1 className="text-xl font-heading" style={{ color: "var(--color-accent)" }}>
                                 Mímico - Partida
                             </h1>
-                            <p className="text-sm text-gray-500">Mesa do João</p>
+                            <p className="text-sm text-gray-500">{currentTable?.name || "Mesa"}</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-4">
                         <div className="hidden sm:flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                                <div className="w-3 h-3 bg-teal-500 rounded-full" />
                                 <span>Time A: {teamAPosition}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                                <div className="w-3 h-3 bg-orange-500 rounded-full" />
                                 <span>Time B: {teamBPosition}</span>
                             </div>
                         </div>
+                        <Button
+                            onClick={() => setShowLeaveModal(true)}
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Sair
+                        </Button>
                     </div>
                 </div>
             </header>
 
             <div className="flex-1 flex flex-col lg:hidden p-4 gap-4">
-
-                {gamePhase === 'mime' ? (
+                {gamePhase === "mime" ? (
                     <div className="bg-white rounded-lg shadow-lg p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
                                 {currentMime} fazendo mímica
                             </h3>
                             <div className="flex items-center gap-2">
-                                <div className={`text-xl font-bold ${timeLeft <= 10 ? 'text-red-500' : 'text-gray-700'}`}>
+                                <div className={`text-xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
                                     {timeLeft}s
                                 </div>
                                 <div className="text-2xl">⏳</div>
@@ -190,7 +236,7 @@ export default function GamePage() {
                         </div>
 
                         <div className="grid grid-cols-3 gap-2">
-                            {['Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
+                            {["Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
                                 <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
                                     <Avatar nickname={name} size="sm" />
                                 </div>
@@ -207,11 +253,11 @@ export default function GamePage() {
                         </div>
                         <div className="mt-3 flex justify-center gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                                <div className="w-3 h-3 bg-teal-500 rounded-full" />
                                 <span>Time A: {teamAPosition}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                                <div className="w-3 h-3 bg-orange-500 rounded-full" />
                                 <span>Time B: {teamBPosition}</span>
                             </div>
                         </div>
@@ -219,7 +265,7 @@ export default function GamePage() {
                 )}
 
                 <div className="bg-white rounded-lg shadow-lg p-6">
-                    {gamePhase === 'dice' && (
+                    {gamePhase === "dice" && (
                         <div className="text-center">
                             <h3 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
                                 Sua vez de jogar!
@@ -238,28 +284,22 @@ export default function GamePage() {
                                     </div>
                                 )}
                             </div>
-                            <Button
-                                onClick={handleRollDice}
-                                disabled={isRolling}
-                                variant="primary"
-                                fullWidth
-                                className="py-4 text-lg"
-                            >
-                                {isRolling ? 'Jogando...' : 'Jogar Dado'}
+                            <Button onClick={handleRollDice} disabled={isRolling} variant="primary" fullWidth className="py-4 text-lg">
+                                {isRolling ? "Jogando..." : "Jogar Dado"}
                             </Button>
                         </div>
                     )}
 
-                    {gamePhase === 'word-selection' && (
+                    {gamePhase === "word-selection" && (
                         <div className="text-center">
                             <h3 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
                                 Escolha uma categoria:
                             </h3>
                             <div className="space-y-3">
                                 {[
-                                    { word: 'Cachorro', category: 'Eu sou', color: 'bg-blue-100 border-blue-300 text-blue-800' },
-                                    { word: 'Correr', category: 'Eu faço', color: 'bg-green-100 border-green-300 text-green-800' },
-                                    { word: 'Telefone', category: 'Objeto', color: 'bg-purple-100 border-purple-300 text-purple-800' }
+                                    { word: "Cachorro", category: "Eu sou", color: "bg-blue-100 border-blue-300 text-blue-800" },
+                                    { word: "Correr", category: "Eu faço", color: "bg-green-100 border-green-300 text-green-800" },
+                                    { word: "Telefone", category: "Objeto", color: "bg-purple-100 border-purple-300 text-purple-800" },
                                 ].map((item, index) => (
                                     <div
                                         key={index}
@@ -274,22 +314,18 @@ export default function GamePage() {
                         </div>
                     )}
 
-                    {gamePhase === 'mime' && (
+                    {gamePhase === "mime" && (
                         <div className="text-center">
                             <div className="mb-4">
                                 <div className="text-4xl mb-3">⏳</div>
-                                <div className={`text-3xl font-bold ${timeLeft <= 10 ? 'text-red-500' : 'text-gray-700'}`}>
+                                <div className={`text-3xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
                                     {timeLeft}s
                                 </div>
                                 <div className="text-sm text-gray-500 mt-1">restantes</div>
                             </div>
                             <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                                <p className="text-teal-800 font-semibold">
-                                    Palavra: "Cachorro"
-                                </p>
-                                <p className="text-teal-600 text-sm mt-1">
-                                    Faça gestos para sua equipe adivinhar!
-                                </p>
+                                <p className="text-teal-800 font-semibold">Palavra: "Cachorro"</p>
+                                <p className="text-teal-600 text-sm mt-1">Faça gestos para sua equipe adivinhar!</p>
                             </div>
                         </div>
                     )}
@@ -300,11 +336,7 @@ export default function GamePage() {
                         <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
                             Chat do Jogo
                         </h3>
-                        {gamePhase === 'mime' && (
-                            <p className="text-xs text-teal-600 mt-1">
-                                Digite para adivinhar a palavra!
-                            </p>
-                        )}
+                        {gamePhase === "mime" && <p className="text-xs text-teal-600 mt-1">Digite para adivinhar a palavra!</p>}
                     </div>
 
                     <div className="flex-1 p-4 overflow-y-auto">
@@ -312,7 +344,7 @@ export default function GamePage() {
                             <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-gray-100 flex items-center justify-center">
                                 <span className="text-xl">💬</span>
                             </div>
-                            {gamePhase === 'mime' ? 'Digite suas tentativas aqui...' : 'Aguardando próxima rodada...'}
+                            {gamePhase === "mime" ? "Digite suas tentativas aqui..." : "Aguardando próxima rodada..."}
                         </div>
                     </div>
 
@@ -320,7 +352,7 @@ export default function GamePage() {
                         <form onSubmit={handleSendMessage} className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder={gamePhase === 'mime' ? "Sua resposta..." : "Digite uma mensagem..."}
+                                placeholder={gamePhase === "mime" ? "Sua resposta..." : "Digite uma mensagem..."}
                                 value={message}
                                 onChange={(e) => setMessage(e.target.value)}
                                 className="flex-1 px-3 py-2 bg-gray-50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
@@ -334,36 +366,32 @@ export default function GamePage() {
             </div>
 
             <div className="hidden lg:flex flex-1 max-w-7xl mx-auto w-full p-4 gap-4">
-
                 <div className="w-2/3 bg-white rounded-lg shadow-lg p-6">
                     <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
                         Tabuleiro - Imagem e Ação
                     </h2>
 
-                    <div className="relative h-96 bg-gray-50 rounded-lg overflow-hidden mb-4">
-                        {createWindingPath()}
-                    </div>
+                    <div className="relative h-96 bg-gray-50 rounded-lg overflow-hidden mb-4">{createWindingPath()}</div>
 
                     <div className="flex justify-center gap-6 text-sm">
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-teal-500 rounded-full"></div>
+                            <div className="w-4 h-4 bg-teal-500 rounded-full" />
                             <span>Time A: Posição {teamAPosition}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
+                            <div className="w-4 h-4 bg-orange-500 rounded-full" />
                             <span>Time B: Posição {teamBPosition}</span>
                         </div>
                     </div>
                 </div>
 
                 <div className="w-1/3 space-y-4">
-
                     <div className="bg-white rounded-lg shadow-lg p-4">
                         <h3 className="font-semibold mb-3" style={{ color: "var(--color-accent)" }}>
                             Vídeo Chamada
                         </h3>
 
-                        {gamePhase === 'mime' ? (
+                        {gamePhase === "mime" ? (
                             <div className="space-y-3">
                                 <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center relative">
                                     <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
@@ -376,7 +404,7 @@ export default function GamePage() {
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-2">
-                                    {['Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
+                                    {["Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
                                         <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
                                             <Avatar nickname={name} size="sm" />
                                         </div>
@@ -385,7 +413,7 @@ export default function GamePage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 gap-2">
-                                {['João Silva', 'Maria Santos', 'Pedro Costa', 'Ana Lima'].map((name, index) => (
+                                {["João Silva", "Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
                                     <div key={index} className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
                                         <Avatar nickname={name} size="md" />
                                     </div>
@@ -400,7 +428,7 @@ export default function GamePage() {
                                 Chat do Jogo
                             </h3>
                             <p className="text-xs text-gray-500">
-                                {gamePhase === 'mime' ? 'Digite para adivinhar!' : 'Converse com sua equipe'}
+                                {gamePhase === "mime" ? "Digite para adivinhar!" : "Converse com sua equipe"}
                             </p>
                         </div>
 
@@ -433,15 +461,11 @@ export default function GamePage() {
 
             <div className="hidden lg:block fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
                 <div className="bg-white rounded-xl shadow-xl p-6 min-w-96">
-                    {gamePhase === 'dice' && (
+                    {gamePhase === "dice" && (
                         <div className="text-center">
                             <div className="flex items-center gap-4">
                                 <div className="text-4xl">
-                                    {isRolling ? (
-                                        <div className="animate-spin">🎲</div>
-                                    ) : (
-                                        <div className="opacity-50">🎲</div>
-                                    )}
+                                    {isRolling ? <div className="animate-spin">🎲</div> : <div className="opacity-50">🎲</div>}
                                 </div>
                                 <div className="flex-1">
                                     {diceResult && (
@@ -449,29 +473,24 @@ export default function GamePage() {
                                             Resultado: {diceResult}
                                         </div>
                                     )}
-                                    <Button
-                                        onClick={handleRollDice}
-                                        disabled={isRolling}
-                                        variant="primary"
-                                        className="mt-2"
-                                    >
-                                        {isRolling ? 'Jogando...' : 'Jogar Dado'}
+                                    <Button onClick={handleRollDice} disabled={isRolling} variant="primary" className="mt-2">
+                                        {isRolling ? "Jogando..." : "Jogar Dado"}
                                     </Button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {gamePhase === 'word-selection' && (
+                    {gamePhase === "word-selection" && (
                         <div>
                             <h3 className="text-center text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
                                 Escolha uma categoria:
                             </h3>
                             <div className="grid grid-cols-3 gap-3">
                                 {[
-                                    { word: 'Cachorro', category: 'Eu sou', color: 'bg-blue-100 border-blue-300 text-blue-800' },
-                                    { word: 'Correr', category: 'Eu faço', color: 'bg-green-100 border-green-300 text-green-800' },
-                                    { word: 'Telefone', category: 'Objeto', color: 'bg-purple-100 border-purple-300 text-purple-800' }
+                                    { word: "Cachorro", category: "Eu sou", color: "bg-blue-100 border-blue-300 text-blue-800" },
+                                    { word: "Correr", category: "Eu faço", color: "bg-green-100 border-green-300 text-green-800" },
+                                    { word: "Telefone", category: "Objeto", color: "bg-purple-100 border-purple-300 text-purple-800" },
                                 ].map((item, index) => (
                                     <div
                                         key={index}
@@ -486,26 +505,82 @@ export default function GamePage() {
                         </div>
                     )}
 
-                    {gamePhase === 'mime' && (
+                    {gamePhase === "mime" && (
                         <div className="text-center">
                             <div className="flex items-center gap-4">
                                 <div className="text-3xl">⏳</div>
                                 <div className="flex-1">
-                                    <div className={`text-2xl font-bold ${timeLeft <= 10 ? 'text-red-500' : 'text-gray-700'}`}>
+                                    <div className={`text-2xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
                                         {timeLeft} segundos
                                     </div>
                                     <div className="text-sm text-gray-500">restantes</div>
                                 </div>
                             </div>
                             <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-3">
-                                <p className="text-teal-800 font-semibold">
-                                    Palavra: "Cachorro"
-                                </p>
+                                <p className="text-teal-800 font-semibold">Palavra: "Cachorro"</p>
                             </div>
                         </div>
                     )}
                 </div>
             </div>
+
+            {showLeaveModal && (
+                <Modal
+                    isOpen={showLeaveModal}
+                    onClose={() => setShowLeaveModal(false)}
+                    title={
+                        <div className="flex items-center gap-3">
+                            <ArrowLeftEndOnRectangleIcon className="h-6 w-6 text-red-600" />
+                            <span className="font-heading text-2xl">Sair da Partida</span>
+                        </div>
+                    }
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setShowLeaveModal(false)}>
+                                Cancelar
+                            </Button>
+                            <Button
+                                variant="primary"
+                                className="bg-red-600 hover:bg-red-700"
+                                onClick={() => handleAbandonMatch()}
+                            >
+                                Abandonar
+                            </Button>
+                        </>
+                    }
+                >
+                    <p className="text-gray-600">
+                        Tem certeza que deseja abandonar a partida? Sua equipe perderá automaticamente.
+                    </p>
+                </Modal>
+            )}
+
+            {matchResult && (
+                <Modal
+                    isOpen={!!matchResult}
+                    onClose={() => router.push("/lobby")}
+                    title={
+                        <div className="flex items-center gap-3">
+                            <span className="text-3xl">{matchResult.reason === "ABANDONED" ? "🏳️" : "🏆"}</span>
+                            <span className="font-heading text-2xl">Partida Encerrada</span>
+                        </div>
+                    }
+                    footer={
+                        <Button variant="primary" onClick={() => router.push("/lobby")} fullWidth>
+                            Voltar ao Lobby
+                        </Button>
+                    }
+                >
+                    <div className="text-center py-4">
+                        <p className="text-2xl font-bold mb-2" style={{ color: "var(--color-accent)" }}>
+                            Time {matchResult.winnerTeam} venceu!
+                        </p>
+                        {matchResult.reason === "ABANDONED" && matchResult.abandonedByNickname && (
+                            <p className="text-gray-600">{matchResult.abandonedByNickname} abandonou a partida.</p>
+                        )}
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

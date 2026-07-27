@@ -69,6 +69,7 @@ const resetStore = () => {
         tableTeamAssignments: [],
         tableClosedReason: null,
         matchStartedId: null,
+        isMatchStarted: false,
         tableChatMessages: [],
     });
 };
@@ -302,6 +303,7 @@ describe("auth and lobby store", () => {
 
         subscriptions.get(`/topic/table/${tableId}/match-started`)?.(matchStartedEnvelope);
         expect(useStore.getState().matchStartedId).toBe(matchStartedEnvelope.data.matchId);
+        expect(useStore.getState().isMatchStarted).toBe(true);
 
         subscriptions.get(`/topic/table/${tableId}/closed`)?.(tableClosedEnvelope);
         expect(useStore.getState().tableClosedReason).toBe("HOST_CLOSED");

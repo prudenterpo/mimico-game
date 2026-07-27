@@ -148,6 +148,7 @@ interface Store extends AuthState {
     tableTeamAssignments: TeamAssignment[];
     tableClosedReason: string | null;
     matchStartedId: string | null;
+    isMatchStarted: boolean;
 
     createTable: (tableName: string, invitedUserIds: string[]) => Promise<GameTable | null>;
     fetchTable: (tableId: string) => Promise<GameTable | null>;
@@ -158,6 +159,7 @@ interface Store extends AuthState {
     setCurrentTablePlayers: (players: TablePlayer[]) => void;
     assignTeams: (team: Team, playerIds: string[]) => void;
     startMatch: () => void;
+    abandonMatch: (tableId: string) => void;
     leaveTable: () => void;
     sendTableChatMessage: (message: string) => void;
     addTableChatMessage: (message: ChatMessage) => void;
@@ -211,6 +213,7 @@ export const useStore = create<Store>((set, get) => ({
             tableTeamAssignments: [],
             tableClosedReason: null,
             matchStartedId: null,
+            isMatchStarted: false,
             tableChatMessages: [],
         });
     },
@@ -315,6 +318,7 @@ export const useStore = create<Store>((set, get) => ({
     tableTeamAssignments: [],
     tableClosedReason: null,
     matchStartedId: null,
+    isMatchStarted: false,
 
     createTable: async (tableName: string, invitedUserIds: string[]) => {
         const name = tableName.trim();
@@ -409,6 +413,7 @@ export const useStore = create<Store>((set, get) => ({
             if (!isRealtimeEnvelope<MatchStartedEventData>(message, "MATCH_STARTED")) return;
             set({
                 matchStartedId: message.data.matchId || tableId,
+                isMatchStarted: true,
             });
         });
 
@@ -449,6 +454,7 @@ export const useStore = create<Store>((set, get) => ({
             tableTeamAssignments: [],
             tableClosedReason: null,
             matchStartedId: null,
+            isMatchStarted: false,
         });
 
         return invite.tableId;
@@ -510,6 +516,11 @@ export const useStore = create<Store>((set, get) => ({
         stompClient.publish("/app/table/match/start", { tableId: currentTable.id });
     },
 
+    abandonMatch: (tableId: string) => {
+        if (!tableId) return;
+        stompClient.publish("/app/match/abandon", { tableId });
+    },
+
     leaveTable: () => {
         const currentTable = get().currentTable;
         if (!currentTable) return;
@@ -541,6 +552,7 @@ export const useStore = create<Store>((set, get) => ({
             tableTeamAssignments: [],
             tableClosedReason: null,
             matchStartedId: null,
+            isMatchStarted: false,
             tableChatMessages: [],
         });
     },
