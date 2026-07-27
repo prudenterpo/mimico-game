@@ -32,7 +32,6 @@ export default function LobbyPage() {
         pendingInvite,
         acceptInvite,
         rejectInvite,
-        currentTable,
         restoreAuth
     } = useStore();
 
@@ -40,16 +39,26 @@ export default function LobbyPage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [showUsersModal, setShowUsersModal] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
+    const [authChecked, setAuthChecked] = useState(false);
+    const [chatError, setChatError] = useState<string | null>(null);
     const toastIdRef = useRef<string | number | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    const handleCreateTable = (tableName: string, invitedUsers: User[]) => {
+    const handleCreateTable = async (tableName: string, invitedUsers: User[]) => {
         const invitedUserIds = invitedUsers.map((u) => u.id);
-        createTable(tableName, invitedUserIds);
+        try {
+            const table = await createTable(tableName, invitedUserIds);
+            if (!table) return;
 
-        toast.success(`Mesa "${tableName}" criada!`, {
-            description: `Convites enviados para ${invitedUsers.length} jogadores`,
-        });
+            toast.success(`Mesa "${table.name}" criada!`, {
+                description: `Convites enviados para ${invitedUsers.length} jogadores`,
+            });
+            router.push(`/table/${table.id}`);
+        } catch (error) {
+            toast.error("Nao foi possivel criar a mesa.", {
+                description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+            });
+        }
     };
 
     useEffect(() => {
@@ -59,14 +68,26 @@ export default function LobbyPage() {
     }, [user, isAuthenticated]);
 
     useEffect(() => {
-        restoreAuth().catch(console.error);
-    }, []);
+        let cancelled = false;
 
-    useEffect(() => {
-        if (currentTable && currentTable.status === "waiting") {
-            router.push(`/table/${currentTable.id}`)
-        }
-    }, [currentTable, router]);
+        restoreAuth()
+            .then((restored) => {
+                if (cancelled) return;
+                setAuthChecked(true);
+                if (!restored && !useStore.getState().isAuthenticated) {
+                    router.replace("/login");
+                }
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setAuthChecked(true);
+                router.replace("/login");
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [restoreAuth, router]);
 
     useEffect(() => {
         if (pendingInvite) {
@@ -78,10 +99,10 @@ export default function LobbyPage() {
                 <InviteToast
                     invite={pendingInvite}
                     onAccept={() => {
-                        console.log("Invite accepted!");
-                        acceptInvite();
+                        const tableId = acceptInvite();
                         toast.dismiss(toastIdRef.current!);
                         toast.success("Convite aceito! Entrando na mesa...");
+                        if (tableId) router.push(`/table/${tableId}`);
                     }}
                     onReject={() => {
                         console.log("Invite rejected!");
@@ -104,15 +125,34 @@ export default function LobbyPage() {
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (message.trim()) {
-            sendChatMessage(message);
-            setMessage("");
+        const text = message.trim();
+        if (!text) {
+            setChatError("Digite uma mensagem para enviar.");
+            return;
         }
+        if (text.length > 500) {
+            setChatError("A mensagem deve ter no máximo 500 caracteres.");
+            return;
+        }
+        sendChatMessage(text);
+        setMessage("");
+        setChatError(null);
     };
 
     const filterOnlineUsers = (user: User | null) => {
         return onlineUsers.filter(u => u.id != user?.id);
     };
+
+    if (!authChecked && !isAuthenticated) {
+        return (
+            <main
+                className="min-h-screen flex items-center justify-center p-6"
+                style={{ backgroundColor: "var(--color-background)", color: "var(--color-accent)" }}
+            >
+                <p className="text-lg font-semibold">Entrando no lobby...</p>
+            </main>
+        );
+    }
 
     return (
         <>
@@ -121,7 +161,7 @@ export default function LobbyPage() {
                 <AppHeader onLogout={() => setShowLogoutModal(true)} subTitle="Lobby" />
 
                 <div className="flex-1 flex max-w-6xl mx-auto w-full pt-4 pb-4 gap-4">
-                    <div className="hidden md:flex w-72 bg-white rounded-lg shadow-lg flex-col">
+                    <aside aria-label="Jogadores online" className="hidden md:flex w-72 bg-white rounded-lg shadow-lg flex-col">
                         <div className="p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
@@ -164,9 +204,9 @@ export default function LobbyPage() {
                                 Criar Mesa
                             </Button>
                         </div>
-                    </div>
+                    </aside>
 
-                    <div className="flex-1 flex flex-col bg-white rounded-lg shadow-lg">
+                    <main aria-label="Chat global do lobby" className="flex-1 flex flex-col bg-white rounded-lg shadow-lg">
                         <div className="p-4">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -256,11 +296,20 @@ export default function LobbyPage() {
                                         type="text"
                                         placeholder="Digite uma mensagem..."
                                         value={message}
-                                        onChange={(e) => setMessage(e.target.value)}
+                                        onChange={(e) => {
+                                            setMessage(e.target.value);
+                                            if (chatError) setChatError(null);
+                                        }}
                                         className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm sm:text-base"
                                         style={{ color: "var(--color-accent)" }}
                                         maxLength={500}
+                                        aria-describedby={chatError ? "lobby-chat-error" : undefined}
                                     />
+                                    {chatError && (
+                                        <p id="lobby-chat-error" className="mt-1 text-sm text-red-500">
+                                            {chatError}
+                                        </p>
+                                    )}
                                 </div>
                                 <Button
                                     type="submit"
@@ -272,7 +321,7 @@ export default function LobbyPage() {
                                 </Button>
                             </form>
                         </div>
-                    </div>
+                    </main>
                 </div>
             </div>
 

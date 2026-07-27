@@ -1,6 +1,16 @@
-import { ApiResponse } from "@/types";
+import { ErrorResponse } from "@/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
+export class ApiClientError extends Error {
+    response: { status: number; data: ErrorResponse | null };
+
+    constructor(status: number, data: ErrorResponse | null) {
+        super(data?.message || `Erro na requisicao: ${status}`);
+        this.name = "ApiClientError";
+        this.response = { status, data };
+    }
+}
 
 class ApiClient {
     private readonly baseUrl: string;
@@ -47,8 +57,7 @@ class ApiClient {
         }
 
         if (!response.ok) {
-            console.error("API Error:", data);
-            throw new Error(data?.message || `Erro na requisição: ${response.status}`);
+            throw new ApiClientError(response.status, data as ErrorResponse | null);
         }
 
         return data as T;

@@ -14,13 +14,18 @@ interface CreateTableModalProps {
     onCreateTable: (tableName: string, invitedUsers: User[]) => void;
 }
 
-export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreateTable }: CreateTableModalProps) {
+export default function CreateTableModal({
+     isOpen,
+     onClose,
+     onlineUsers,
+     onCreateTable,
+}: CreateTableModalProps) {
     const [tableName, setTableName] = useState("");
     const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
-
-    const canCreate = tableName.trim() !== "" && selectedUsers.length === 3;
+    const [error, setError] = useState<string | null>(null);
 
     const toggleUser = (user: User) => {
+        setError(null);
         if (selectedUsers.find((u) => u.id === user.id)) {
             setSelectedUsers(selectedUsers.filter((u) => u.id !== user.id));
         } else {
@@ -31,35 +36,47 @@ export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreat
     };
 
     const handleCreate = () => {
-        if (!canCreate) return;
+        const name = tableName.trim();
 
-        onCreateTable(tableName, selectedUsers);
+        if (!name) {
+            setError("Digite um nome para a mesa.");
+            return;
+        }
+
+        if (name.length < 3) {
+            setError("O nome da mesa precisa ter pelo menos 3 caracteres.");
+            return;
+        }
+
+        if (name.length > 100) {
+            setError("O nome da mesa deve ter no máximo 100 caracteres.");
+            return;
+        }
+
+        if (selectedUsers.length !== 3) {
+            setError("Selecione exatamente 3 jogadores online.");
+            return;
+        }
+
+        onCreateTable(name, selectedUsers);
+
         setTableName("");
         setSelectedUsers([]);
-        onClose();
-    };
-
-    const handleClose = () => {
-        setTableName("");
-        setSelectedUsers([]);
+        setError(null);
         onClose();
     };
 
     return (
         <Modal
             isOpen={isOpen}
-            onClose={handleClose}
+            onClose={onClose}
             title="Criar Nova Mesa"
             footer={
                 <>
-                    <Button variant="secondary" onClick={handleClose}>
+                    <Button variant="secondary" onClick={onClose}>
                         Cancelar
                     </Button>
-                    <Button
-                        variant="primary"
-                        onClick={handleCreate}
-                        disabled={!canCreate}
-                    >
+                    <Button variant="primary" onClick={handleCreate}>
                         Criar Mesa
                     </Button>
                 </>
@@ -70,25 +87,17 @@ export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreat
                     label="Nome da Mesa"
                     placeholder="Ex: Mesa dos Silvas"
                     value={tableName}
-                    onChange={(e) => setTableName(e.target.value)}
+                    onChange={(e) => {
+                        setTableName(e.target.value);
+                        if (error) setError(null);
+                    }}
                     fullWidth
                     autoFocus
                 />
 
                 <div>
                     <label className="block text-sm font-medium mb-3" style={{ color: "var(--color-accent)" }}>
-                        Convidar Jogadores{" "}
-                        <span
-                            style={{
-                                color: selectedUsers.length === 3
-                                    ? "var(--color-success)"
-                                    : "var(--color-accent)",
-                                fontWeight: selectedUsers.length === 3 ? "bold" : "normal"
-                            }}
-                        >
-                            ({selectedUsers.length}/3)
-                            {selectedUsers.length === 3 && " ✓"}
-                        </span>
+                        Convidar Jogadores ({selectedUsers.length}/3)
                     </label>
 
                     {onlineUsers.length === 0 ? (
@@ -100,10 +109,12 @@ export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreat
                             {onlineUsers.map((user) => {
                                 const isSelected = selectedUsers.find((u) => u.id === user.id);
                                 return (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={user.id}
                                         onClick={() => toggleUser(user)}
-                                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                        aria-pressed={Boolean(isSelected)}
+                                        className={`w-full text-left flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                             isSelected ? "ring-2" : "hover:shadow-md"
                                         }`}
                                         style={{
@@ -125,12 +136,18 @@ export default function CreateTableModal({ isOpen, onClose, onlineUsers, onCreat
                                         {isSelected && (
                                             <span className="text-xl">✓</span>
                                         )}
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
                     )}
                 </div>
+
+                {error && (
+                    <p role="alert" className="text-sm font-medium text-red-500">
+                        {error}
+                    </p>
+                )}
             </div>
         </Modal>
     );
