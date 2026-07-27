@@ -1,8 +1,63 @@
 import { create } from "zustand";
-import {User, AuthState, ChatMessage, GameTable, Invite, UserProfileResponse} from "@/types";
+import {
+    AuthState,
+    ChatMessage,
+    GameTable,
+    Invite,
+    LobbyMessageEventData,
+    LoginResponse,
+    OnlineUsersResponse,
+    RealtimeEventEnvelope,
+    TableInviteEventData,
+    User,
+    UserProfileResponse
+} from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
-import {root} from "postcss";
+
+const LOBBY_MESSAGE_MAX_LENGTH = 500;
+
+const toUser = (profile: UserProfileResponse): User => ({
+    id: profile.userId,
+    nickname: profile.nickname,
+    email: profile.email,
+    avatar: profile.avatarUrl || undefined,
+    roles: profile.roles,
+    isOnline: true,
+});
+
+const isRealtimeEnvelope = <T>(message: unknown, type: string): message is RealtimeEventEnvelope<T> => {
+    if (!message || typeof message !== "object") return false;
+    const candidate = message as Partial<RealtimeEventEnvelope<T>>;
+    return (
+        candidate.type === type &&
+        !!candidate.data &&
+        typeof candidate.data === "object" &&
+        typeof candidate.occurredAt === "string"
+    );
+};
+
+const createInviteFromEvent = (data: TableInviteEventData): Invite | null => {
+    const inviteId = data.inviteId || data.id;
+    const hostName = data.hostName || data.hostDisplayName;
+    const expiresAt = data.expiresAt
+        ? new Date(data.expiresAt)
+        : new Date(Date.now() + ((data.expiresIn ?? 60) * 1000));
+
+    if (!data.tableId || !data.tableName || !data.hostId || !hostName || !data.invitedUserId) {
+        return null;
+    }
+
+    return {
+        id: inviteId || data.tableId,
+        tableId: data.tableId,
+        tableName: data.tableName,
+        hostId: data.hostId,
+        hostName,
+        invitedUserId: data.invitedUserId,
+        expiresAt,
+    };
+};
 
 interface Store extends AuthState {
     login: (email: string, password: string) => Promise<void>;
@@ -42,7 +97,7 @@ interface Store extends AuthState {
     addTableChatMessage: (message: ChatMessage) => void;
     clearTableChat: () => void;
 
-    restoreAuth: () => Promise<void>;
+    restoreAuth: () => Promise<boolean>;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -52,30 +107,20 @@ export const useStore = create<Store>((set, get) => ({
 
     login: async (email: string, password: string) => {
         try {
-            const { token, userId, nickname } = await api.post<{ token: string; userId: string; nickname: string }>("/auth/login", {
+            const { token, user: profile } = await api.post<LoginResponse>("/auth/login", {
                 email,
                 password,
             });
-            console.log("token do me: " + token);
             api.setToken(token);
+            stompClient.setToken(token);
 
-            const user: User = {
-                id: userId,
-                nickname: nickname,
-                email,
-                isOnline: true,
-            };
-
+            const user = toUser(profile);
             set({
                 user,
                 token,
                 isAuthenticated: true,
             });
-
-            localStorage.setItem("token", token);
-
         } catch (error) {
-            console.error("Login error:", error);
             throw error;
         }
     },
@@ -85,17 +130,19 @@ export const useStore = create<Store>((set, get) => ({
             await api.post("/auth/register", { nickname, email, password });
             await get().login(email, password);
         } catch (error) {
-            console.error("Register error:", error);
             throw error;
         }
     },
 
     logout: () => {
         get().disconnectWebSocket();
+        Promise.resolve(api.post("/auth/logout")).catch(() => undefined);
         api.setToken(null);
         stompClient.setToken(null);
-        localStorage.removeItem("token");
-        sessionStorage.clear();
+        if (typeof window !== "undefined") {
+            localStorage.removeItem("token");
+            sessionStorage.clear();
+        }
         set({
             user: null,
             token: null,
@@ -111,35 +158,35 @@ export const useStore = create<Store>((set, get) => ({
     },
 
     restoreAuth: async () => {
-        const token = localStorage.getItem("token");
-        console.log("🔍 RestoreAuth - Token found:", token);
-
-
-        if (!token) return;
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        if (!token) return false;
 
         try {
             api.setToken(token);
+            stompClient.setToken(token);
 
             const userProfile = await api.get<UserProfileResponse>("/auth/me");
-            console.log("🔍 Backend returned profile:", userProfile);
-
-            const user = {
-                id: userProfile.userId,
-                nickname: userProfile.nickname,
-                email: userProfile.email,
-                isOnline: true,
-            };
+            const user = toUser(userProfile);
 
             set({
                 user,
                 token,
                 isAuthenticated: true,
             });
+            return true;
 
         } catch (error) {
-            console.error("Failed to restore auth:", error);
-            localStorage.removeItem("token");
             api.setToken(null);
+            stompClient.setToken(null);
+            set({
+                user: null,
+                token: null,
+                isAuthenticated: false,
+                onlineUsers: [],
+                chatMessages: [],
+                pendingInvite: null,
+            });
+            return false;
         }
     },
 
@@ -166,9 +213,8 @@ export const useStore = create<Store>((set, get) => ({
     },
 
     connectWebSocket: () => {
-        const token = get().token;
-        if (!token) {
-            console.error("No token available");
+        const { token, isAuthenticated } = get();
+        if (!token || !isAuthenticated) {
             return;
         }
 
@@ -176,83 +222,35 @@ export const useStore = create<Store>((set, get) => ({
 
         stompClient.connect(
             () => {
-                console.log("Connected to WebSocket");
-
                 stompClient.subscribe("/topic/lobby/users", (message) => {
-                    console.log("📨 Raw WebSocket message:", message);
-
-                    // Parse the message body if it's a string
-                    let data;
-                    if (typeof message.body === 'string') {
-                        try {
-                            data = JSON.parse(message.body);
-                        } catch (error) {
-                            console.error('Error parsing message body:', error);
-                            return;
-                        }
-                    } else {
-                        data = message;
+                    if (!isRealtimeEnvelope<OnlineUsersResponse>(message, "ONLINE_USERS_UPDATED")) {
+                        return;
                     }
 
-                    console.log("📨 Parsed WebSocket data:", data);
-
-                    if (data.type === "ONLINE_USERS_UPDATE") {
-                        const usersData = data.users || [];
-
-                        if (usersData.length > 0 && typeof usersData[0] === 'string') {
-                            console.log("🔄 Converting user IDs to user objects");
-                            const userObjects = usersData.map((userId: string) => ({
-                                id: userId,
-                                nickname: `User ${userId.slice(0, 8)}`,
-                                email: '',
-                                isOnline: true
-                            }));
-                            get().setOnlineUsers(userObjects);
-                        } else {
-                            get().setOnlineUsers(usersData);
-                        }
-                    }
+                    get().setOnlineUsers(message.data.users.map(toUser));
                 });
 
                 stompClient.subscribe("/topic/lobby/chat", (message) => {
-                    console.log("📨 Raw chat message:", message);
-
-                    let data;
-                    if (typeof message.body === 'string') {
-                        try {
-                            data = JSON.parse(message.body);
-                        } catch (error) {
-                            console.error('Error parsing chat message body:', error);
-                            return;
-                        }
-                    } else {
-                        data = message;
+                    if (!isRealtimeEnvelope<LobbyMessageEventData>(message, "LOBBY_MESSAGE_POSTED")) {
+                        return;
                     }
 
-                    console.log("📨 Parsed chat data:", data);
+                    const data = message.data;
 
                     const chatMessage: ChatMessage = {
-                        id: data.id || Date.now().toString(),
-                        userId: data.userId,
-                        userName: data.userName || data.nickname,
+                        id: `${data.senderUserId}-${data.sentAt}`,
+                        userId: data.senderUserId,
+                        userName: data.senderDisplayName,
                         message: data.message,
-                        timestamp: data.timestamp || new Date().toISOString()
+                        timestamp: data.sentAt
                     };
                     get().addChatMessage(chatMessage);
                 });
 
                 stompClient.subscribe("/user/queue/invite", (message) => {
-                    if (message.type === "GAME_INVITE") {
-                        const inviteData = message.data;
-                        const invite: Invite = {
-                            id: inviteData.id || Date.now().toString(),
-                            tableId: inviteData.tableId,
-                            tableName: inviteData.tableName,
-                            hostId: inviteData.hostId,
-                            hostName: inviteData.hostName,
-                            invitedUserId: inviteData.invitedUserId,
-                            expiresAt: new Date(Date.now() + (inviteData.expiresIn * 1000))
-                        };
+                    if (isRealtimeEnvelope<TableInviteEventData>(message, "TABLE_INVITE_RECEIVED")) {
+                        const invite = createInviteFromEvent(message.data);
+                        if (!invite) return;
                         set({ pendingInvite: invite });
                     }
                 });
@@ -297,9 +295,7 @@ export const useStore = create<Store>((set, get) => ({
 
                 stompClient.publish("/app/lobby/join", {});
             },
-            (error) => {
-                console.error("WebSocket connection error:", error);
-            }
+            () => undefined
         );
     },
 
@@ -311,13 +307,11 @@ export const useStore = create<Store>((set, get) => ({
         const user = get().user;
         if (!user) return;
 
-        console.log("Sending message:", { userId: user.id, userName: user.nickname, message });
+        const text = message.trim();
+        if (!text || text.length > LOBBY_MESSAGE_MAX_LENGTH) return;
 
         stompClient.publish("/app/lobby/chat", {
-            userId: user.id,
-            userName: user.nickname,
-            message,
-            timestamp: new Date().toISOString(),
+            message: text,
         });
     },
 
@@ -416,6 +410,7 @@ export const useStore = create<Store>((set, get) => ({
 
         stompClient.publish("/app/table/invite/accept", {
             tableId: invite.tableId,
+            inviteId: invite.id,
         });
 
         get().connectToTable(invite.tableId);
@@ -439,6 +434,7 @@ export const useStore = create<Store>((set, get) => ({
 
         stompClient.publish("/app/table/invite/reject", {
             tableId: invite.tableId,
+            inviteId: invite.id,
         });
 
         set({ pendingInvite: null });
