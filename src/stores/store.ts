@@ -6,16 +6,26 @@ import {
     Invite,
     LobbyMessageEventData,
     LoginResponse,
+    MatchStartedEventData,
     OnlineUsersResponse,
     RealtimeEventEnvelope,
+    TableClosedEventData,
     TableInviteEventData,
+    TableMessageEventData,
+    TablePlayer,
+    TablePlayersEventData,
+    TableResponse,
+    TableStatus,
+    TableTeamsEventData,
+    Team,
+    TeamAssignment,
     User,
     UserProfileResponse
 } from "@/types";
 import { api } from "@/lib/api";
 import { stompClient } from "@/lib/stomp";
 
-const LOBBY_MESSAGE_MAX_LENGTH = 500;
+const CHAT_MESSAGE_MAX_LENGTH = 500;
 
 const toUser = (profile: UserProfileResponse): User => ({
     id: profile.userId,
@@ -35,6 +45,62 @@ const isRealtimeEnvelope = <T>(message: unknown, type: string): message is Realt
         typeof candidate.data === "object" &&
         typeof candidate.occurredAt === "string"
     );
+};
+
+const normalizeTableStatus = (status?: string): TableStatus => {
+    if (
+        status === "TABLE_READY_TO_START" ||
+        status === "TABLE_IN_MATCH" ||
+        status === "TABLE_BETWEEN_MATCHES" ||
+        status === "TABLE_CLOSED"
+    ) {
+        return status;
+    }
+    return "TABLE_WAITING";
+};
+
+const normalizeTablePlayerStatus = (status?: string): TablePlayer["status"] => {
+    if (status === "pending" || status === "rejected" || status === "expired") return status;
+    if (status === "INVITE_PENDING") return "pending";
+    if (status === "INVITE_REJECTED") return "rejected";
+    if (status === "INVITE_EXPIRED") return "expired";
+    return "accepted";
+};
+
+const normalizeTablePlayer = (player: Partial<TablePlayer> & Partial<UserProfileResponse>): TablePlayer | null => {
+    const userId = player.userId;
+    const nickname = player.nickname;
+    if (!userId || !nickname) return null;
+    return {
+        userId,
+        nickname,
+        status: normalizeTablePlayerStatus(player.status),
+    };
+};
+
+const tableFromResponse = (response: TableResponse, currentUser: User | null): GameTable => {
+    const tableId = response.tableId || response.id || "";
+    const hostId = response.hostUserId || response.hostId || currentUser?.id || "";
+    const responsePlayers = (response.players || [])
+        .map((player) => normalizeTablePlayer(player))
+        .filter((player): player is TablePlayer => Boolean(player));
+
+    const players: TablePlayer[] = responsePlayers.length > 0
+        ? responsePlayers
+        : currentUser && currentUser.id === hostId
+          ? [{ userId: currentUser.id, nickname: currentUser.nickname, status: "accepted" as const }]
+          : [];
+
+    return {
+        id: tableId,
+        name: response.name,
+        hostId,
+        hostNickname: response.hostNickname,
+        status: normalizeTableStatus(response.status),
+        players,
+        teamAssignments: response.teamAssignments || [],
+        createdAt: response.createdAt,
+    };
 };
 
 const createInviteFromEvent = (data: TableInviteEventData): Invite | null => {
@@ -63,41 +129,40 @@ interface Store extends AuthState {
     login: (email: string, password: string) => Promise<void>;
     register: (nickname: string, email: string, password: string) => Promise<void>;
     logout: () => void;
+    restoreAuth: () => Promise<boolean>;
     setUser: (user: User | null) => void;
 
     onlineUsers: User[];
     chatMessages: ChatMessage[];
-
     setOnlineUsers: (users: User[]) => void;
     addChatMessage: (message: ChatMessage) => void;
     clearChat: () => void;
-
-    connectWebSocket: () => void;
+    connectWebSocket: (onConnected?: () => void) => void;
     disconnectWebSocket: () => void;
     sendChatMessage: (message: string) => void;
 
     currentTable: GameTable | null;
     pendingInvite: Invite | null;
-
-    currentTablePlayers: User[];
-    readyPlayers: string[];
+    currentTablePlayers: TablePlayer[];
     tableChatMessages: ChatMessage[];
+    tableTeamAssignments: TeamAssignment[];
+    tableClosedReason: string | null;
+    matchStartedId: string | null;
+
+    createTable: (tableName: string, invitedUserIds: string[]) => Promise<GameTable | null>;
+    fetchTable: (tableId: string) => Promise<GameTable | null>;
     connectToTable: (tableId: string) => void;
-
-    createTable: (tableName: string, invitedUserIds: string[]) => void;
     setPendingInvite: (invite: Invite | null) => void;
-    acceptInvite: () => void;
+    acceptInvite: () => string | null;
     rejectInvite: () => void;
-
-    setCurrentTablePlayers: (players: User[]) => void;
-    setReadyPlayers: (readyPlayerIds: string[]) => void;
-    toggleReady: () => void;
+    setCurrentTablePlayers: (players: TablePlayer[]) => void;
+    assignTeams: (team: Team, playerIds: string[]) => void;
+    startMatch: () => void;
     leaveTable: () => void;
     sendTableChatMessage: (message: string) => void;
     addTableChatMessage: (message: ChatMessage) => void;
     clearTableChat: () => void;
-
-    restoreAuth: () => Promise<boolean>;
+    resetTableRuntimeState: () => void;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -106,32 +171,23 @@ export const useStore = create<Store>((set, get) => ({
     isAuthenticated: false,
 
     login: async (email: string, password: string) => {
-        try {
-            const { token, user: profile } = await api.post<LoginResponse>("/auth/login", {
-                email,
-                password,
-            });
-            api.setToken(token);
-            stompClient.setToken(token);
+        const { token, user: profile } = await api.post<LoginResponse>("/auth/login", {
+            email,
+            password,
+        });
+        api.setToken(token);
+        stompClient.setToken(token);
 
-            const user = toUser(profile);
-            set({
-                user,
-                token,
-                isAuthenticated: true,
-            });
-        } catch (error) {
-            throw error;
-        }
+        set({
+            user: toUser(profile),
+            token,
+            isAuthenticated: true,
+        });
     },
 
     register: async (nickname: string, email: string, password: string) => {
-        try {
-            await api.post("/auth/register", { nickname, email, password });
-            await get().login(email, password);
-        } catch (error) {
-            throw error;
-        }
+        await api.post("/auth/register", { nickname, email, password });
+        await get().login(email, password);
     },
 
     logout: () => {
@@ -152,7 +208,9 @@ export const useStore = create<Store>((set, get) => ({
             currentTable: null,
             pendingInvite: null,
             currentTablePlayers: [],
-            readyPlayers: [],
+            tableTeamAssignments: [],
+            tableClosedReason: null,
+            matchStartedId: null,
             tableChatMessages: [],
         });
     },
@@ -166,16 +224,13 @@ export const useStore = create<Store>((set, get) => ({
             stompClient.setToken(token);
 
             const userProfile = await api.get<UserProfileResponse>("/auth/me");
-            const user = toUser(userProfile);
-
             set({
-                user,
+                user: toUser(userProfile),
                 token,
                 isAuthenticated: true,
             });
             return true;
-
-        } catch (error) {
+        } catch {
             api.setToken(null);
             stompClient.setToken(null);
             set({
@@ -190,110 +245,54 @@ export const useStore = create<Store>((set, get) => ({
         }
     },
 
-
-    setUser: (user: User | null) => {
-        set({ user });
-    },
+    setUser: (user: User | null) => set({ user }),
 
     onlineUsers: [],
     chatMessages: [],
-
-    setOnlineUsers: (users: User[]) => {
-        set({ onlineUsers: users });
-    },
-
+    setOnlineUsers: (users: User[]) => set({ onlineUsers: users }),
     addChatMessage: (message: ChatMessage) => {
-        set((state) => ({
-            chatMessages: [...state.chatMessages, message],
-        }));
+        set((state) => ({ chatMessages: [...state.chatMessages, message] }));
     },
+    clearChat: () => set({ chatMessages: [] }),
 
-    clearChat: () => {
-        set({ chatMessages: [] });
-    },
-
-    connectWebSocket: () => {
+    connectWebSocket: (onConnected?: () => void) => {
         const { token, isAuthenticated } = get();
-        if (!token || !isAuthenticated) {
-            return;
-        }
+        if (!token || !isAuthenticated) return;
 
         stompClient.setToken(token);
-
         stompClient.connect(
             () => {
                 stompClient.subscribe("/topic/lobby/users", (message) => {
-                    if (!isRealtimeEnvelope<OnlineUsersResponse>(message, "ONLINE_USERS_UPDATED")) {
-                        return;
-                    }
-
+                    if (!isRealtimeEnvelope<OnlineUsersResponse>(message, "ONLINE_USERS_UPDATED")) return;
                     get().setOnlineUsers(message.data.users.map(toUser));
                 });
 
                 stompClient.subscribe("/topic/lobby/chat", (message) => {
-                    if (!isRealtimeEnvelope<LobbyMessageEventData>(message, "LOBBY_MESSAGE_POSTED")) {
-                        return;
-                    }
-
+                    if (!isRealtimeEnvelope<LobbyMessageEventData>(message, "LOBBY_MESSAGE_POSTED")) return;
                     const data = message.data;
-
-                    const chatMessage: ChatMessage = {
+                    get().addChatMessage({
                         id: `${data.senderUserId}-${data.sentAt}`,
                         userId: data.senderUserId,
                         userName: data.senderDisplayName,
                         message: data.message,
-                        timestamp: data.sentAt
-                    };
-                    get().addChatMessage(chatMessage);
+                        timestamp: data.sentAt,
+                    });
                 });
 
                 stompClient.subscribe("/user/queue/invite", (message) => {
-                    if (isRealtimeEnvelope<TableInviteEventData>(message, "TABLE_INVITE_RECEIVED")) {
-                        const invite = createInviteFromEvent(message.data);
-                        if (!invite) return;
-                        set({ pendingInvite: invite });
-                    }
+                    if (!isRealtimeEnvelope<TableInviteEventData>(message, "TABLE_INVITE_RECEIVED")) return;
+                    const invite = createInviteFromEvent(message.data);
+                    if (invite) set({ pendingInvite: invite });
                 });
 
-                stompClient.subscribe("/user/queue/table/players", (message) => {
-                    if (message.type === "TABLE_PLAYERS_UPDATE") {
-                        const players = message.players || [];
-                        get().setCurrentTablePlayers(players);
+                stompClient.subscribe("/user/queue/error", (message) => {
+                    if (message && typeof message === "object") {
+                        console.error("WebSocket error:", message);
                     }
-                });
-
-                stompClient.subscribe("/user/queue/table/ready", (message) => {
-                    if (message.type === "READY_STATUS_UPDATE") {
-                        const readyPlayerIds = message.readyPlayers || [];
-                        get().setReadyPlayers(readyPlayerIds);
-                    }
-                });
-
-                stompClient.subscribe("/user/queue/table/chat", (message) => {
-                    if (message.type === "TABLE_CHAT_MESSAGE") {
-                        const chatMessage: ChatMessage = {
-                            id: message.id || Date.now().toString(),
-                            userId: message.userId,
-                            userName: message.userName,
-                            message: message.message,
-                            timestamp: message.timestamp
-                        };
-                        get().addTableChatMessage(chatMessage);
-                    }
-                });
-
-                stompClient.subscribe("/user/queue/table/start", (message) => {
-                    if (message.type === "GAME_STARTING") {
-                        const { tableId } = message;
-                        console.log("Game starting for table:", tableId);
-                    }
-                });
-
-                stompClient.subscribe("/user/queue/errors", (message) => {
-                    console.error("WebSocket error:", message.message);
                 });
 
                 stompClient.publish("/app/lobby/join", {});
+                onConnected?.();
             },
             () => undefined
         );
@@ -304,116 +303,136 @@ export const useStore = create<Store>((set, get) => ({
     },
 
     sendChatMessage: (message: string) => {
-        const user = get().user;
-        if (!user) return;
-
         const text = message.trim();
-        if (!text || text.length > LOBBY_MESSAGE_MAX_LENGTH) return;
-
-        stompClient.publish("/app/lobby/chat", {
-            message: text,
-        });
+        if (!get().user || !text || text.length > CHAT_MESSAGE_MAX_LENGTH) return;
+        stompClient.publish("/app/lobby/chat", { message: text });
     },
 
     currentTable: null,
     pendingInvite: null,
-
     currentTablePlayers: [],
-    readyPlayers: [],
     tableChatMessages: [],
+    tableTeamAssignments: [],
+    tableClosedReason: null,
+    matchStartedId: null,
 
-    createTable: (tableName: string, invitedUserIds: string[]) => {
+    createTable: async (tableName: string, invitedUserIds: string[]) => {
+        const name = tableName.trim();
         const user = get().user;
-        if (!user) return;
+        const uniqueInvitedUserIds = Array.from(new Set(invitedUserIds)).filter((id) => id !== user?.id);
+        if (!user || name.length < 3 || name.length > 100 || uniqueInvitedUserIds.length !== 3) return null;
 
-        const tableId = crypto.randomUUID();
+        const table = tableFromResponse(await api.post<TableResponse>("/tables", { name }), user);
+        set({
+            currentTable: table,
+            currentTablePlayers: table.players,
+            tableTeamAssignments: table.teamAssignments,
+            tableClosedReason: null,
+            matchStartedId: null,
+            tableChatMessages: [],
+        });
 
-        invitedUserIds.forEach(invitedUserId => {
+        uniqueInvitedUserIds.forEach((invitedUserId) => {
             stompClient.publish("/app/table/invite", {
-                tableId,
-                tableName,
-                invitedUserId: invitedUserId,
+                tableId: table.id,
+                invitedUserId,
             });
         });
+
+        return table;
     },
 
+    fetchTable: async (tableId: string) => {
+        const table = tableFromResponse(await api.get<TableResponse>(`/tables/${tableId}`), get().user);
+        set({
+            currentTable: table,
+            currentTablePlayers: table.players,
+            tableTeamAssignments: table.teamAssignments,
+            tableClosedReason: table.status === "TABLE_CLOSED" ? "SYSTEM_CLOSED" : null,
+        });
+        return table;
+    },
 
     connectToTable: (tableId: string) => {
-        console.log("🔌 Connecting to table:", tableId);
+        stompClient.subscribe(`/topic/table/${tableId}/players`, (message) => {
+            if (!isRealtimeEnvelope<TablePlayersEventData>(message, "TABLE_PLAYERS_UPDATED")) return;
+            const data = message.data;
+            const players = [
+                ...(data.players || []),
+                ...(data.pendingInvites || []),
+                ...(data.rejectedInvites || []),
+                ...(data.expiredInvites || []),
+            ]
+                .map((player) => normalizeTablePlayer(player))
+                .filter((player): player is TablePlayer => Boolean(player));
 
-        stompClient.subscribe(`/topic/table/${tableId}/player-accepted`, (message) => {
-            console.log("📨 Player accepted:", message);
-            let data;
-            if (typeof message.body === 'string') {
-                data = JSON.parse(message.body);
-            } else {
-                data = message;
-            }
-
-            if (data.type === "PLAYER_ACCEPTED") {
-                console.log("✅ Player accepted, refreshing table status");
-            }
+            set((state) => ({
+                currentTablePlayers: players,
+                currentTable: state.currentTable
+                    ? {
+                        ...state.currentTable,
+                        players,
+                        status: normalizeTableStatus(data.status || state.currentTable.status),
+                    }
+                    : state.currentTable,
+            }));
         });
 
-        stompClient.subscribe(`/topic/table/${tableId}/status`, (message) => {
-            console.log("📨 Table status:", message);
-            let data;
-            if (typeof message.body === 'string') {
-                data = JSON.parse(message.body);
-            } else {
-                data = message;
-            }
-
-            if (data.type === "TABLE_STATUS") {
-                console.log("📊 Table status update:", data.acceptedCount, "/", data.requiredCount);
-                // TODO: Atualizar contagem de jogadores no UI
-            }
+        stompClient.subscribe(`/topic/table/${tableId}/teams`, (message) => {
+            if (!isRealtimeEnvelope<TableTeamsEventData>(message, "TABLE_TEAMS_UPDATED")) return;
+            const assignments = message.data.teamAssignments || [];
+            set((state) => ({
+                tableTeamAssignments: assignments,
+                currentTable: state.currentTable
+                    ? {
+                        ...state.currentTable,
+                        teamAssignments: assignments,
+                        status: normalizeTableStatus(message.data.status || state.currentTable.status),
+                    }
+                    : state.currentTable,
+            }));
         });
 
-        stompClient.subscribe(`/topic/table/${tableId}/ready`, (message) => {
-            console.log("📨 Ready status:", message);
-            let data;
-            if (typeof message.body === 'string') {
-                data = JSON.parse(message.body);
-            } else {
-                data = message;
-            }
-
-            if (data.type === "READY_STATUS_UPDATE") {
-                const readyPlayerIds = data.readyPlayers || [];
-                get().setReadyPlayers(readyPlayerIds);
-            }
+        stompClient.subscribe(`/topic/table/${tableId}/chat`, (message) => {
+            if (!isRealtimeEnvelope<TableMessageEventData>(message, "TABLE_MESSAGE_POSTED")) return;
+            const data = message.data;
+            get().addTableChatMessage({
+                id: `${data.senderUserId}-${data.sentAt}`,
+                userId: data.senderUserId,
+                userName: data.senderDisplayName,
+                message: data.message,
+                timestamp: data.sentAt,
+            });
         });
 
         stompClient.subscribe(`/topic/table/${tableId}/match-started`, (message) => {
-            console.log("📨 Match started:", message);
-            let data;
-            if (typeof message.body === 'string') {
-                data = JSON.parse(message.body);
-            } else {
-                data = message;
-            }
+            if (!isRealtimeEnvelope<MatchStartedEventData>(message, "MATCH_STARTED")) return;
+            set({
+                matchStartedId: message.data.matchId || tableId,
+            });
+        });
 
-            if (data.type === "MATCH_STARTED") {
-                console.log("🎮 Game starting!", data.data);
-                window.location.href = `/table/${tableId}`;
-            }
+        stompClient.subscribe(`/topic/table/${tableId}/closed`, (message) => {
+            if (!isRealtimeEnvelope<TableClosedEventData>(message, "TABLE_CLOSED")) return;
+            set((state) => ({
+                tableClosedReason: message.data.reason,
+                currentTable: state.currentTable
+                    ? { ...state.currentTable, status: "TABLE_CLOSED" }
+                    : state.currentTable,
+            }));
         });
     },
-    setPendingInvite: (invite: Invite | null) => {
-        set({ pendingInvite: invite });
-    },
+
+    setPendingInvite: (invite: Invite | null) => set({ pendingInvite: invite }),
 
     acceptInvite: () => {
         const invite = get().pendingInvite;
-        if (!invite) return;
+        if (!invite) return null;
 
         stompClient.publish("/app/table/invite/accept", {
             tableId: invite.tableId,
             inviteId: invite.id,
         });
-
-        get().connectToTable(invite.tableId);
 
         set({
             pendingInvite: null,
@@ -421,11 +440,18 @@ export const useStore = create<Store>((set, get) => ({
                 id: invite.tableId,
                 name: invite.tableName,
                 hostId: invite.hostId,
+                hostNickname: invite.hostName,
                 players: [],
-                status: "waiting",
-                createdAt: new Date(),
-            }
+                status: "TABLE_WAITING",
+                teamAssignments: [],
+            },
+            currentTablePlayers: [],
+            tableTeamAssignments: [],
+            tableClosedReason: null,
+            matchStartedId: null,
         });
+
+        return invite.tableId;
     },
 
     rejectInvite: () => {
@@ -440,65 +466,82 @@ export const useStore = create<Store>((set, get) => ({
         set({ pendingInvite: null });
     },
 
-    setCurrentTablePlayers: (players: User[]) => {
-        set({ currentTablePlayers: players });
+    setCurrentTablePlayers: (players: TablePlayer[]) => {
+        set((state) => ({
+            currentTablePlayers: players,
+            currentTable: state.currentTable ? { ...state.currentTable, players } : state.currentTable,
+        }));
     },
 
-    setReadyPlayers: (readyPlayerIds: string[]) => {
-        set({ readyPlayers: readyPlayerIds });
-    },
-
-    toggleReady: () => {
-        const user = get().user;
+    assignTeams: (team: Team, playerIds: string[]) => {
         const currentTable = get().currentTable;
-        if (!user || !currentTable) return;
+        if (!currentTable) return;
 
-        const isCurrentlyReady = get().readyPlayers.includes(user.id);
+        const nextPlayerIds = Array.from(new Set(playerIds)).slice(0, 2);
+        const nextAssignments = (["A", "B"] as Team[]).map((candidateTeam) => {
+            if (candidateTeam === team) {
+                return { team: candidateTeam, playerIds: nextPlayerIds };
+            }
 
-        stompClient.publish("/app/table/ready", {
-            tableId: currentTable.id,
-            userId: user.id,
-            ready: !isCurrentlyReady,
+            const existingIds = get().tableTeamAssignments
+                .find((assignment) => assignment.team === candidateTeam)
+                ?.playerIds || [];
+
+            return {
+                team: candidateTeam,
+                playerIds: existingIds.filter((playerId) => !nextPlayerIds.includes(playerId)),
+            };
         });
+
+        set({
+            tableTeamAssignments: nextAssignments,
+            currentTable: { ...currentTable, teamAssignments: nextAssignments },
+        });
+
+        stompClient.publish("/app/table/teams/assign", {
+            tableId: currentTable.id,
+            teamAssignments: nextAssignments,
+        });
+    },
+
+    startMatch: () => {
+        const currentTable = get().currentTable;
+        if (!currentTable) return;
+        stompClient.publish("/app/table/match/start", { tableId: currentTable.id });
     },
 
     leaveTable: () => {
         const currentTable = get().currentTable;
         if (!currentTable) return;
 
-        stompClient.publish("/app/table/leave", {
-            tableId: currentTable.id,
-        });
-
-        set({
-            currentTable: null,
-            currentTablePlayers: [],
-            readyPlayers: [],
-            tableChatMessages: [],
-        });
+        stompClient.publish("/app/table/leave", { tableId: currentTable.id });
+        get().resetTableRuntimeState();
     },
 
     sendTableChatMessage: (message: string) => {
-        const user = get().user;
         const currentTable = get().currentTable;
-        if (!user || !currentTable) return;
+        const text = message.trim();
+        if (!currentTable || !text || text.length > CHAT_MESSAGE_MAX_LENGTH) return;
 
-        stompClient.publish("/app/table/chat", {
-            tableId: currentTable.id,
-            userId: user.id,
-            userName: user.nickname,
-            message,
-            timestamp: new Date().toISOString(),
+        stompClient.publish(`/app/table/${currentTable.id}/chat`, {
+            message: text,
         });
     },
 
     addTableChatMessage: (message: ChatMessage) => {
-        set((state) => ({
-            tableChatMessages: [...state.tableChatMessages, message],
-        }));
+        set((state) => ({ tableChatMessages: [...state.tableChatMessages, message] }));
     },
 
-    clearTableChat: () => {
-        set({ tableChatMessages: [] });
+    clearTableChat: () => set({ tableChatMessages: [] }),
+
+    resetTableRuntimeState: () => {
+        set({
+            currentTable: null,
+            currentTablePlayers: [],
+            tableTeamAssignments: [],
+            tableClosedReason: null,
+            matchStartedId: null,
+            tableChatMessages: [],
+        });
     },
 }));

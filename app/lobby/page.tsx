@@ -32,7 +32,6 @@ export default function LobbyPage() {
         pendingInvite,
         acceptInvite,
         rejectInvite,
-        currentTable,
         restoreAuth
     } = useStore();
 
@@ -45,13 +44,21 @@ export default function LobbyPage() {
     const toastIdRef = useRef<string | number | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    const handleCreateTable = (tableName: string, invitedUsers: User[]) => {
+    const handleCreateTable = async (tableName: string, invitedUsers: User[]) => {
         const invitedUserIds = invitedUsers.map((u) => u.id);
-        createTable(tableName, invitedUserIds);
+        try {
+            const table = await createTable(tableName, invitedUserIds);
+            if (!table) return;
 
-        toast.success(`Mesa "${tableName}" criada!`, {
-            description: `Convites enviados para ${invitedUsers.length} jogadores`,
-        });
+            toast.success(`Mesa "${table.name}" criada!`, {
+                description: `Convites enviados para ${invitedUsers.length} jogadores`,
+            });
+            router.push(`/table/${table.id}`);
+        } catch (error) {
+            toast.error("Nao foi possivel criar a mesa.", {
+                description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+            });
+        }
     };
 
     useEffect(() => {
@@ -87,12 +94,6 @@ export default function LobbyPage() {
     }, [restoreAuth, router]);
 
     useEffect(() => {
-        if (currentTable && currentTable.status === "waiting") {
-            router.push(`/table/${currentTable.id}`)
-        }
-    }, [currentTable, router]);
-
-    useEffect(() => {
         if (pendingInvite) {
             if (toastIdRef.current) {
                 toast.dismiss(toastIdRef.current);
@@ -102,10 +103,10 @@ export default function LobbyPage() {
                 <InviteToast
                     invite={pendingInvite}
                     onAccept={() => {
-                        console.log("Invite accepted!");
-                        acceptInvite();
+                        const tableId = acceptInvite();
                         toast.dismiss(toastIdRef.current!);
                         toast.success("Convite aceito! Entrando na mesa...");
+                        if (tableId) router.push(`/table/${tableId}`);
                     }}
                     onReject={() => {
                         console.log("Invite rejected!");

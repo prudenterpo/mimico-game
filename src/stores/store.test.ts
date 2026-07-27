@@ -10,6 +10,20 @@ import {
     validLobbyChatMessage,
     validLoginResponse
 } from "@/test/fixtures/authLobby";
+import {
+    acceptedPlayers,
+    hostUser,
+    inviteeUsers,
+    matchStartedEnvelope,
+    mixedStatusPlayers,
+    tableClosedEnvelope,
+    tableId,
+    tableMessageEnvelope,
+    tablePlayersEnvelope,
+    tableTeamsEnvelope,
+    validCreateTableResponse,
+    validTeamAssignments
+} from "@/test/fixtures/tableSetup";
 import { User } from "@/types";
 
 const mocks = vi.hoisted(() => {
@@ -52,7 +66,9 @@ const resetStore = () => {
         currentTable: null,
         pendingInvite: null,
         currentTablePlayers: [],
-        readyPlayers: [],
+        tableTeamAssignments: [],
+        tableClosedReason: null,
+        matchStartedId: null,
         tableChatMessages: [],
     });
 };
@@ -201,6 +217,136 @@ describe("auth and lobby store", () => {
         expect(mocks.stompClient.publish).toHaveBeenCalledWith("/app/lobby/chat", {
             message: validLobbyChatMessage,
         });
+    });
+
+    it("creates a table through REST, uses backend table id and sends exactly 3 invites", async () => {
+        mocks.api.post.mockResolvedValueOnce(validCreateTableResponse);
+        useStore.setState({
+            user: hostUser,
+            token: "fake.jwt.token",
+            isAuthenticated: true,
+        });
+
+        const table = await useStore.getState().createTable("Mesa da rodada", inviteeUsers.map((user) => user.id));
+
+        expect(mocks.api.post).toHaveBeenCalledWith("/tables", { name: "Mesa da rodada" });
+        expect(table?.id).toBe(tableId);
+        expect(useStore.getState().currentTable?.id).toBe(tableId);
+        expect(mocks.stompClient.publish).toHaveBeenCalledTimes(3);
+        inviteeUsers.forEach((invitee) => {
+            expect(mocks.stompClient.publish).toHaveBeenCalledWith("/app/table/invite", {
+                tableId,
+                invitedUserId: invitee.id,
+            });
+        });
+    });
+
+    it("blocks invalid create-table inputs before API calls", async () => {
+        useStore.setState({
+            user: hostUser,
+            token: "fake.jwt.token",
+            isAuthenticated: true,
+        });
+
+        await useStore.getState().createTable("ab", inviteeUsers.map((user) => user.id));
+        await useStore.getState().createTable("Mesa", inviteeUsers.slice(0, 2).map((user) => user.id));
+        await useStore.getState().createTable("Mesa", [hostUser.id, ...inviteeUsers.slice(0, 2).map((user) => user.id)]);
+
+        expect(mocks.api.post).not.toHaveBeenCalled();
+        expect(mocks.stompClient.publish).not.toHaveBeenCalled();
+    });
+
+    it("subscribes to canonical table destinations and handles table envelopes", () => {
+        const subscriptions = new Map<string, (message: unknown) => void>();
+        mocks.stompClient.subscribe.mockImplementation((destination: string, callback: (message: unknown) => void) => {
+            subscriptions.set(destination, callback);
+            return { unsubscribe: vi.fn() };
+        });
+        useStore.setState({
+            user: hostUser,
+            currentTable: {
+                id: tableId,
+                name: "Mesa da rodada",
+                hostId: hostUser.id,
+                players: [],
+                status: "TABLE_WAITING",
+                teamAssignments: [],
+            },
+        });
+
+        useStore.getState().connectToTable(tableId);
+
+        expect(Array.from(subscriptions.keys())).toEqual([
+            `/topic/table/${tableId}/players`,
+            `/topic/table/${tableId}/teams`,
+            `/topic/table/${tableId}/chat`,
+            `/topic/table/${tableId}/match-started`,
+            `/topic/table/${tableId}/closed`,
+        ]);
+
+        subscriptions.get(`/topic/table/${tableId}/players`)?.(tablePlayersEnvelope);
+        expect(useStore.getState().currentTablePlayers).toEqual(mixedStatusPlayers);
+
+        subscriptions.get(`/topic/table/${tableId}/teams`)?.(tableTeamsEnvelope);
+        expect(useStore.getState().tableTeamAssignments).toEqual(validTeamAssignments);
+        expect(useStore.getState().currentTable?.status).toBe("TABLE_READY_TO_START");
+
+        subscriptions.get(`/topic/table/${tableId}/chat`)?.(tableMessageEnvelope);
+        expect(useStore.getState().tableChatMessages[0]).toMatchObject({
+            userName: "friend_2",
+            message: "Bora montar os times?",
+        });
+
+        subscriptions.get(`/topic/table/${tableId}/chat`)?.({ type: "TABLE_MESSAGE_POSTD", data: null });
+        expect(useStore.getState().tableChatMessages).toHaveLength(1);
+
+        subscriptions.get(`/topic/table/${tableId}/match-started`)?.(matchStartedEnvelope);
+        expect(useStore.getState().matchStartedId).toBe(matchStartedEnvelope.data.matchId);
+
+        subscriptions.get(`/topic/table/${tableId}/closed`)?.(tableClosedEnvelope);
+        expect(useStore.getState().tableClosedReason).toBe("HOST_CLOSED");
+    });
+
+    it("publishes table chat, team assignment, start and leave commands canonically", () => {
+        useStore.setState({
+            user: hostUser,
+            currentTable: {
+                id: tableId,
+                name: "Mesa da rodada",
+                hostId: hostUser.id,
+                players: acceptedPlayers,
+                status: "TABLE_WAITING",
+                teamAssignments: [],
+            },
+            currentTablePlayers: acceptedPlayers,
+            tableTeamAssignments: [],
+        });
+
+        useStore.getState().sendTableChatMessage("   ");
+        useStore.getState().sendTableChatMessage("x".repeat(501));
+        expect(mocks.stompClient.publish).not.toHaveBeenCalled();
+
+        useStore.getState().sendTableChatMessage("  Oi, mesa!  ");
+        expect(mocks.stompClient.publish).toHaveBeenCalledWith(`/app/table/${tableId}/chat`, {
+            message: "Oi, mesa!",
+        });
+
+        useStore.getState().assignTeams("A", [hostUser.id, inviteeUsers[0].id]);
+        expect(mocks.stompClient.publish).toHaveBeenCalledWith("/app/table/teams/assign", {
+            tableId,
+            teamAssignments: [
+                { team: "A", playerIds: [hostUser.id, inviteeUsers[0].id] },
+                { team: "B", playerIds: [] },
+            ],
+        });
+
+        useStore.setState({ tableTeamAssignments: validTeamAssignments });
+        useStore.getState().startMatch();
+        expect(mocks.stompClient.publish).toHaveBeenCalledWith("/app/table/match/start", { tableId });
+
+        useStore.getState().leaveTable();
+        expect(mocks.stompClient.publish).toHaveBeenCalledWith("/app/table/leave", { tableId });
+        expect(useStore.getState().currentTable).toBeNull();
     });
 
     it("publishes invite accept and reject decisions with invite id", () => {

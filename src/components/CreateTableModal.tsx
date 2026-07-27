@@ -22,8 +22,10 @@ export default function CreateTableModal({
 }: CreateTableModalProps) {
     const [tableName, setTableName] = useState("");
     const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     const toggleUser = (user: User) => {
+        setError(null);
         if (selectedUsers.find((u) => u.id === user.id)) {
             setSelectedUsers(selectedUsers.filter((u) => u.id !== user.id));
         } else {
@@ -34,20 +36,33 @@ export default function CreateTableModal({
     };
 
     const handleCreate = () => {
-        if (!tableName.trim()) {
-            alert("Digite um nome para a mesa");
+        const name = tableName.trim();
+
+        if (!name) {
+            setError("Digite um nome para a mesa.");
+            return;
+        }
+
+        if (name.length < 3) {
+            setError("O nome da mesa precisa ter pelo menos 3 caracteres.");
+            return;
+        }
+
+        if (name.length > 100) {
+            setError("O nome da mesa deve ter no máximo 100 caracteres.");
             return;
         }
 
         if (selectedUsers.length !== 3) {
-            alert("Selecione exatamente 3 jogadores");
+            setError("Selecione exatamente 3 jogadores online.");
             return;
         }
 
-        onCreateTable(tableName, selectedUsers);
+        onCreateTable(name, selectedUsers);
 
         setTableName("");
         setSelectedUsers([]);
+        setError(null);
         onClose();
     };
 
@@ -72,7 +87,10 @@ export default function CreateTableModal({
                     label="Nome da Mesa"
                     placeholder="Ex: Mesa dos Silvas"
                     value={tableName}
-                    onChange={(e) => setTableName(e.target.value)}
+                    onChange={(e) => {
+                        setTableName(e.target.value);
+                        if (error) setError(null);
+                    }}
                     fullWidth
                     autoFocus
                 />
@@ -91,10 +109,12 @@ export default function CreateTableModal({
                             {onlineUsers.map((user) => {
                                 const isSelected = selectedUsers.find((u) => u.id === user.id);
                                 return (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={user.id}
                                         onClick={() => toggleUser(user)}
-                                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                        aria-pressed={Boolean(isSelected)}
+                                        className={`w-full text-left flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                             isSelected ? "ring-2" : "hover:shadow-md"
                                         }`}
                                         style={{
@@ -116,12 +136,18 @@ export default function CreateTableModal({
                                         {isSelected && (
                                             <span className="text-xl">✓</span>
                                         )}
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
                     )}
                 </div>
+
+                {error && (
+                    <p role="alert" className="text-sm font-medium text-red-500">
+                        {error}
+                    </p>
+                )}
             </div>
         </Modal>
     );
