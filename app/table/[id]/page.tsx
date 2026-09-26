@@ -123,9 +123,9 @@ export default function TableSetupPage() {
 
     useEffect(() => {
         if (matchStartedId) {
-            router.push(`/game/${matchStartedId}`);
+            router.push(`/game/${tableId}`);
         }
-    }, [matchStartedId, router]);
+    }, [matchStartedId, router, tableId]);
 
     const players = currentTablePlayers.length > 0 ? currentTablePlayers : currentTable?.players || [];
     const acceptedPlayers = players.filter((player) => player.status === "accepted");

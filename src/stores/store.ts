@@ -23,7 +23,9 @@ import {
     UserProfileResponse
 } from "@/types";
 import { api } from "@/lib/api";
+import { readEnvelope } from "@/lib/matchRules";
 import { stompClient } from "@/lib/stomp";
+import { createGameplaySlice, GameplaySlice } from "@/stores/gameplaySlice";
 
 const CHAT_MESSAGE_MAX_LENGTH = 500;
 
@@ -125,7 +127,7 @@ const createInviteFromEvent = (data: TableInviteEventData): Invite | null => {
     };
 };
 
-interface Store extends AuthState {
+interface Store extends AuthState, GameplaySlice {
     login: (email: string, password: string) => Promise<void>;
     register: (nickname: string, email: string, password: string) => Promise<void>;
     logout: () => void;
@@ -168,6 +170,7 @@ interface Store extends AuthState {
 }
 
 export const useStore = create<Store>((set, get) => ({
+    ...createGameplaySlice(set, get),
     user: null,
     token: null,
     isAuthenticated: false,
@@ -193,6 +196,7 @@ export const useStore = create<Store>((set, get) => ({
     },
 
     logout: () => {
+        get().clearMatchRuntime();
         get().disconnectWebSocket();
         Promise.resolve(api.post("/auth/logout")).catch(() => undefined);
         api.setToken(null);
@@ -418,6 +422,11 @@ export const useStore = create<Store>((set, get) => ({
         });
 
         stompClient.subscribe(`/topic/table/${tableId}/closed`, (message) => {
+            const envelope = readEnvelope(message);
+            if (envelope?.type === "MATCH_ENDED") {
+                get().applyMatchEnded(message);
+                return;
+            }
             if (!isRealtimeEnvelope<TableClosedEventData>(message, "TABLE_CLOSED")) return;
             set((state) => ({
                 tableClosedReason: message.data.reason,
@@ -546,6 +555,7 @@ export const useStore = create<Store>((set, get) => ({
     clearTableChat: () => set({ tableChatMessages: [] }),
 
     resetTableRuntimeState: () => {
+        get().clearMatchRuntime();
         set({
             currentTable: null,
             currentTablePlayers: [],
