@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearPrivateWordCard } from "@/lib/privateWordCard";
 import { hostUser, matchId, tableId } from "@/test/fixtures/tableSetup";
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
         disconnect: vi.fn(),
         subscribe: vi.fn(),
         publish: vi.fn(),
+        setConnectionListeners: vi.fn(),
     },
 }));
 
@@ -173,5 +175,54 @@ describe("authoritative gameplay store", () => {
         useStore.getState().prepareRematch();
         expect(useStore.getState().matchState).toBeNull();
         expect(useStore.getState().isMatchStarted).toBe(false);
+    });
+
+    it("refetches server state when the match pauses and restores a private word card", async () => {
+        clearPrivateWordCard();
+        const subscriptions = new Map<string, (message: unknown) => void>();
+        mocks.stompClient.subscribe.mockImplementation((destination: string, callback: (message: unknown) => void) => {
+            subscriptions.set(destination, callback);
+        });
+        useStore.getState().applyAuthoritativeMatch(serverMatch);
+        useStore.getState().connectToMatch(matchId);
+
+        const paused = {
+            ...serverMatch,
+            matchStatus: "MATCH_PAUSED",
+            isPaused: true,
+            roundState: "ROUND_GUESSING",
+            disconnectedUserId: players[2].userId,
+            pauseReason: "PLAYER_DISCONNECTED",
+            reconnectDeadline: "2026-09-26T12:01:00Z",
+            remainingRoundSecondsOnPause: 40,
+        };
+        mocks.api.get.mockResolvedValue(paused);
+        subscriptions.get(`/topic/match/${matchId}/paused`)?.({ type: "MATCH_PAUSED" });
+        await vi.waitFor(() => {
+            expect(useStore.getState().matchState?.isPaused).toBe(true);
+        });
+        expect(mocks.api.get).toHaveBeenCalledWith(`/matches/table/${tableId}`);
+        expect(useStore.getState().matchState?.disconnectedUserId).toBe(players[2].userId);
+
+        useStore.getState().applyAuthoritativeMatch({
+            ...serverMatch,
+            roundState: "ROUND_WAITING_FOR_WORD_SELECTION",
+        });
+        subscriptions.get(`/user/queue/match/${matchId}/word-card`)?.({
+            type: "WORD_CARD_DRAWN",
+            data: {
+                wordCard: [{ wordId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", text: "Gato", category: "EU_SOU" }],
+            },
+            occurredAt: "2026-09-26T12:00:00Z",
+        });
+        useStore.getState().selectWord("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        useStore.setState({ wordCard: [], selectedWordId: null });
+        useStore.getState().applyAuthoritativeMatch({
+            ...serverMatch,
+            roundState: "ROUND_GUESSING",
+            timerEndsAt: "2026-09-26T12:01:00Z",
+        });
+        expect(useStore.getState().wordCard[0]?.text).toBe("Gato");
+        expect(useStore.getState().selectedWordId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     });
 });

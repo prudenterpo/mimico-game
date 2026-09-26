@@ -2,12 +2,24 @@ import { Client, IMessage } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:8080/ws";
+const MAX_RECONNECT_ATTEMPTS = 8;
+
+export interface StompConnectionListeners {
+    onConnectionLost?: () => void;
+    onRetriesExhausted?: () => void;
+}
 
 class StompClient {
     private client: Client | null = null;
     private connected: boolean = false;
     private token: string | null = null;
     private subscriptions = new Map<string, any>();
+    private onConnected: (() => void) | null = null;
+    private onError: ((error: unknown) => void) | null = null;
+    private onConnectionLost: (() => void) | null = null;
+    private onRetriesExhausted: (() => void) | null = null;
+    private closing = false;
+    private closeCount = 0;
 
     constructor() {
         if (typeof window !== "undefined") {
@@ -26,13 +38,26 @@ class StompClient {
         }
     }
 
+    setConnectionListeners(listeners: StompConnectionListeners) {
+        this.onConnectionLost = listeners.onConnectionLost ?? null;
+        this.onRetriesExhausted = listeners.onRetriesExhausted ?? null;
+    }
+
     connect(onConnected?: () => void, onError?: (error: any) => void) {
+        if (onConnected) this.onConnected = onConnected;
+        if (onError) this.onError = onError;
+
         if (this.connected) {
-            console.log("Already connected");
             onConnected?.();
             return;
         }
 
+        if (this.client && !this.closing) {
+            return;
+        }
+
+        this.closing = false;
+        this.closeCount = 0;
         this.client = new Client({
             webSocketFactory: () => new SockJS(WS_URL),
             connectHeaders: {
@@ -43,31 +68,46 @@ class StompClient {
                     console.log("STOMP:", str);
                 }
             },
-            reconnectDelay: 0,
+            reconnectDelay: 2000,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
         });
 
-        this.client.onConnect = (frame) => {
-            console.log("STOMP Connected");
+        this.client.onConnect = () => {
             this.connected = true;
-            onConnected?.();
+            this.closeCount = 0;
+            this.onConnected?.();
         };
 
         this.client.onStompError = (frame) => {
             console.error("STOMP Error:", frame);
             this.connected = false;
-            onError?.(frame);
+            this.onError?.(frame);
         };
 
         this.client.onWebSocketError = (error) => {
             console.error("WebSocket Error:", error);
             this.connected = false;
-            onError?.(error);
+            this.onError?.(error);
+        };
+
+        this.client.onWebSocketClose = () => {
+            this.connected = false;
+            this.subscriptions.clear();
+            if (this.closing) return;
+            this.closeCount += 1;
+            if (this.closeCount >= MAX_RECONNECT_ATTEMPTS) {
+                this.closing = true;
+                const client = this.client;
+                this.client = null;
+                this.onRetriesExhausted?.();
+                client?.deactivate();
+                return;
+            }
+            this.onConnectionLost?.();
         };
 
         this.client.onDisconnect = () => {
-            console.log("STOMP Disconnected");
             this.connected = false;
             this.subscriptions.clear();
         };
@@ -76,13 +116,14 @@ class StompClient {
     }
 
     disconnect() {
+        this.closing = true;
+        this.closeCount = 0;
         if (this.client) {
             this.subscriptions.clear();
             this.client.deactivate({ force: true});
             this.connected = false;
             this.token = null;
             this.client = null;
-            console.log("STOMP Disconnected");
         }
     }
 

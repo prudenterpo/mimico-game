@@ -267,6 +267,18 @@ export const useStore = create<Store>((set, get) => ({
         if (!token || !isAuthenticated) return;
 
         stompClient.setToken(token);
+        stompClient.setConnectionListeners({
+            onConnectionLost: () => {
+                set({ connectionStatus: "RECONNECTING", isRestoring: false });
+            },
+            onRetriesExhausted: () => {
+                set({
+                    connectionStatus: "DISCONNECTED_FINAL",
+                    isRestoring: false,
+                    restoreError: "Nao foi possivel reconectar. A partida continua no servidor.",
+                });
+            },
+        });
         stompClient.connect(
             () => {
                 stompClient.subscribe("/topic/lobby/users", (message) => {

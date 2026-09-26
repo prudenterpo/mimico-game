@@ -2,6 +2,14 @@ import { Team } from "@/types";
 
 export type MatchStatus = "MATCH_SETUP" | "MATCH_ACTIVE" | "MATCH_PAUSED" | "MATCH_FINISHED";
 
+export type ConnectionStatus =
+    | "CONNECTED"
+    | "RECONNECTING"
+    | "RESTORING_STATE"
+    | "PAUSED_BY_DISCONNECTION"
+    | "RECOVERY_TIMEOUT"
+    | "DISCONNECTED_FINAL";
+
 export type GameRoundState =
     | "ROUND_WAITING_FOR_DICE"
     | "ROUND_WAITING_FOR_WORD_SELECTION"

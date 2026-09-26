@@ -7,6 +7,9 @@ import {
     parseGuess,
     parseMatchEnded,
     parseWordCard,
+    connectionStatusAfterRestore,
+    finishReasonLabel,
+    remainingReconnectSeconds,
     remainingSeconds,
     rollEligibility,
     wordEligibility,
@@ -107,6 +110,21 @@ describe("match rules", () => {
             remainingRoundSecondsOnPause: 12,
         });
         expect(remainingSeconds(paused, Date.parse("2026-09-26T12:05:00.000Z"))).toBe(12);
+        const pausedWithoutSnapshot = match({
+            ...guessing,
+            isPaused: true,
+            matchStatus: "MATCH_PAUSED",
+            pausedAt: "2026-09-26T12:00:40.000Z",
+            timerEndsAt: "2026-09-26T12:01:00.000Z",
+            remainingRoundSecondsOnPause: null,
+            reconnectDeadline: "2026-09-26T12:01:40.000Z",
+            disconnectedUserId: players[2].userId,
+        });
+        expect(remainingSeconds(pausedWithoutSnapshot, Date.parse("2026-09-26T12:05:00.000Z"))).toBe(20);
+        expect(remainingReconnectSeconds(pausedWithoutSnapshot, Date.parse("2026-09-26T12:01:10.000Z"))).toBe(30);
+        expect(connectionStatusAfterRestore(pausedWithoutSnapshot, players[2].userId)).toBe("PAUSED_BY_DISCONNECTION");
+        expect(connectionStatusAfterRestore(pausedWithoutSnapshot, players[0].userId)).toBe("CONNECTED");
+        expect(finishReasonLabel("RECONNECTION_FORFEIT")).toMatch(/desconexao/);
         expect(remainingSeconds(match(), Date.now())).toBeNull();
     });
 

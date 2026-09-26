@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import {
     chatAccess,
+    connectionStatusAfterRestore,
     deriveDiceValue,
     deriveRoundFeedback,
     emptySorteio,
@@ -16,10 +17,12 @@ import {
     sorteioSelectEligibility,
     wordEligibility,
 } from "@/lib/matchRules";
+import { clearPrivateWordCard, readPrivateWordCard, writePrivateWordCard } from "@/lib/privateWordCard";
 import { stompClient } from "@/lib/stomp";
 import { GameTable, User } from "@/types";
 import {
     AuthoritativeMatchState,
+    ConnectionStatus,
     MatchEndedView,
     MatchGuess,
     RoundFeedback,
@@ -53,6 +56,10 @@ export interface GameplaySlice {
     forfeitMatch: () => Promise<void>;
     prepareRematch: () => void;
     clearMatchRuntime: () => void;
+    refreshMatchFromServer: () => Promise<void>;
+    connectionStatus: ConnectionStatus;
+    isRestoring: boolean;
+    restoreError: string | null;
     applyAuthoritativeMatch: (raw: unknown) => void;
     applyMatchEnded: (message: unknown) => void;
 }
@@ -80,6 +87,9 @@ const clearedMatch = {
     sorteio: null,
     matchEnded: null,
     awaitingCorrectResolution: false,
+    connectionStatus: "CONNECTED" as ConnectionStatus,
+    isRestoring: false,
+    restoreError: null,
 };
 
 export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice => ({
@@ -104,8 +114,10 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
         stompClient.subscribe(`/user/queue/match/${matchId}/word-card`, (message) => {
             const envelope = readEnvelope(message);
             if (!envelope || envelope.type !== "WORD_CARD_DRAWN" || !envelope.occurredAt) return;
+            const wordCard = parseWordCard(envelope.data);
+            writePrivateWordCard(matchId, wordCard, get().selectedWordId);
             set({
-                wordCard: parseWordCard(envelope.data),
+                wordCard,
                 wordRequestPending: false,
                 matchError: null,
             });
@@ -180,6 +192,13 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
         };
         stompClient.subscribe("/user/queue/error", onCommandError);
         stompClient.subscribe("/user/queue/errors", onCommandError);
+
+        const refreshFromServer = () => {
+            void get().refreshMatchFromServer();
+        };
+        stompClient.subscribe(`/topic/match/${matchId}/paused`, refreshFromServer);
+        stompClient.subscribe(`/topic/match/${matchId}/resumed`, refreshFromServer);
+        stompClient.subscribe("/user/queue/game-state", refreshFromServer);
     },
 
     rollDice: () => {
@@ -200,6 +219,7 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
         const { matchState, user, wordCard } = get();
         if (!matchState || !wordEligibility(matchState, user?.id ?? null).allowed) return;
         if (!wordCard.some((word) => word.wordId === wordId)) return;
+        writePrivateWordCard(matchState.matchId, wordCard, wordId);
         set({ selectedWordId: wordId, matchError: null });
         stompClient.publish(`/app/match/${matchState.matchId}/word/select`, { wordId });
     },
@@ -238,6 +258,7 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
     },
 
     prepareRematch: () => {
+        clearPrivateWordCard();
         set({
             ...clearedMatch,
             matchStartedId: null,
@@ -246,7 +267,24 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
     },
 
     clearMatchRuntime: () => {
+        clearPrivateWordCard();
         set(clearedMatch);
+    },
+
+    refreshMatchFromServer: async () => {
+        const tableId = get().matchState?.tableId ?? get().currentTable?.id;
+        if (!tableId) return;
+        try {
+            const match = normalizeMatchState(await api.get(`/matches/table/${tableId}`));
+            if (!match) return;
+            get().applyAuthoritativeMatch(match);
+            const status = connectionStatusAfterRestore(get().matchState, get().user?.id ?? null);
+            if (get().connectionStatus !== "RECONNECTING" && get().connectionStatus !== "RESTORING_STATE") {
+                set({ connectionStatus: status, restoreError: null });
+            }
+        } catch (error) {
+            set({ restoreError: error instanceof Error ? error.message : "Nao foi possivel atualizar a partida." });
+        }
     },
 
     applyAuthoritativeMatch: (raw: unknown) => {
@@ -260,6 +298,8 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
             && next.roundState === "ROUND_WAITING_FOR_WORD_SELECTION";
         const keepPrivateCard = next.roundState === "ROUND_WAITING_FOR_WORD_SELECTION" || next.roundState === "ROUND_GUESSING";
         const finished = next.matchStatus === "MATCH_FINISHED" || Boolean(next.winnerTeam);
+        if (!keepPrivateCard || enteringWordSelection) clearPrivateWordCard();
+        const storedCard = keepPrivateCard && !enteringWordSelection ? readPrivateWordCard(next.matchId) : null;
 
         set((state) => ({
             matchState: next,
@@ -268,8 +308,14 @@ export const createGameplaySlice = (set: StoreSet, get: StoreGet): GameplaySlice
             lastDiceValue: diceValue ?? (roundChanged ? null : state.lastDiceValue),
             roundFeedback: feedback ?? (roundChanged ? null : state.roundFeedback),
             awaitingCorrectResolution: feedback ? false : state.awaitingCorrectResolution,
-            wordCard: !keepPrivateCard || enteringWordSelection ? [] : state.wordCard,
-            selectedWordId: next.roundState === "ROUND_GUESSING" ? state.selectedWordId : null,
+            wordCard: !keepPrivateCard || enteringWordSelection
+                ? []
+                : state.wordCard.length > 0
+                    ? state.wordCard
+                    : storedCard?.words ?? [],
+            selectedWordId: next.roundState === "ROUND_GUESSING"
+                ? state.selectedWordId ?? storedCard?.selectedWordId ?? null
+                : null,
             sorteio: next.matchStatus === "MATCH_SETUP" ? state.sorteio : null,
             matchEnded: finished
                 ? {
