@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
             disconnect: vi.fn(),
             subscribe: vi.fn(),
             publish: vi.fn(),
+            setConnectionListeners: vi.fn(),
         },
     };
 });

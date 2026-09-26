@@ -79,11 +79,15 @@ describe("GamePage", () => {
             sorteio: null,
             matchEnded: null,
             restoreAuth: vi.fn().mockResolvedValue(true),
-            connectWebSocket: vi.fn(),
+            connectWebSocket: vi.fn((onConnected?: () => void) => onConnected?.()),
             disconnectWebSocket: vi.fn(),
             fetchTable: vi.fn().mockResolvedValue(null),
             fetchMatchByTable: vi.fn().mockResolvedValue(baseMatch()),
             connectToMatch: vi.fn(),
+            refreshMatchFromServer: vi.fn(),
+            connectionStatus: "CONNECTED",
+            isRestoring: false,
+            restoreError: null,
             rollDice,
             drawWordCard,
             selectWord,
@@ -96,14 +100,14 @@ describe("GamePage", () => {
         });
     });
 
-    it("asks the server to roll instead of choosing a local dice value", () => {
+    it("asks the server to roll instead of choosing a local dice value", async () => {
         render(<GamePage />);
-        fireEvent.click(screen.getByRole("button", { name: "Jogar dado" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Jogar dado" }));
         expect(rollDice).toHaveBeenCalledTimes(1);
         expect(screen.queryByText(/Math/)).not.toBeInTheDocument();
     });
 
-    it("keeps the word card private and shows the server timer while guessing", () => {
+    it("keeps the word card private and shows the server timer while guessing", async () => {
         useStore.setState({
             user: {
                 id: players[1].userId,
@@ -121,13 +125,13 @@ describe("GamePage", () => {
         });
 
         render(<GamePage />);
-        expect(screen.getByTestId("round-timer")).toHaveTextContent(/segundos/);
+        expect(await screen.findByTestId("round-timer")).toHaveTextContent(/segundos/);
         expect(screen.queryByText("Gato")).not.toBeInTheDocument();
         expect(screen.getByLabelText("Mensagem da partida")).toBeEnabled();
         expect(screen.getAllByText(/Casa especial/i).length).toBeGreaterThan(0);
     });
 
-    it("lets the mime select a server word and blocks their guess", () => {
+    it("lets the mime select a server word and blocks their guess", async () => {
         useStore.setState({
             matchState: baseMatch({ roundState: "ROUND_WAITING_FOR_WORD_SELECTION", teamAPosition: 9 }),
             wordCard: [
@@ -135,11 +139,11 @@ describe("GamePage", () => {
             ],
         });
         render(<GamePage />);
-        fireEvent.click(screen.getByRole("button", { name: /Gato/i }));
+        fireEvent.click(await screen.findByRole("button", { name: /Gato/i }));
         expect(selectWord).toHaveBeenCalledWith("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     });
 
-    it("offers rematch on the same table after a server win", () => {
+    it("offers rematch on the same table after a server win", async () => {
         useStore.setState({
             matchState: baseMatch({
                 matchStatus: "MATCH_FINISHED",
@@ -151,9 +155,47 @@ describe("GamePage", () => {
             matchEnded: { winnerTeam: "A", finishReason: "BOARD_WIN", abandonedByNickname: null },
         });
         render(<GamePage />);
-        expect(screen.getByRole("status")).toHaveTextContent("Time A venceu");
+        expect(await screen.findByText("Time A venceu")).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "Jogar novamente" }));
         expect(prepareRematch).toHaveBeenCalled();
         expect(router.push).toHaveBeenCalledWith(`/table/${tableId}`);
+    });
+
+    it("names the disconnected player and blocks commands while the server match is paused", async () => {
+        useStore.setState({
+            matchState: baseMatch({
+                matchStatus: "MATCH_PAUSED",
+                isPaused: true,
+                roundState: "ROUND_GUESSING",
+                pauseReason: "PLAYER_DISCONNECTED",
+                disconnectedUserId: players[2].userId,
+                reconnectDeadline: new Date(Date.now() + 30000).toISOString(),
+                remainingRoundSecondsOnPause: 12,
+                timerEndsAt: new Date(Date.now() + 12000).toISOString(),
+            }),
+        });
+
+        render(<GamePage />);
+        expect(await screen.findByTestId("pause-banner")).toHaveTextContent("friend_3 desconectou");
+        expect(screen.getByTestId("reconnect-countdown")).toHaveTextContent("segundos");
+        expect(screen.getByLabelText("Mensagem da partida")).toBeDisabled();
+        expect(screen.getByTestId("round-timer")).toHaveTextContent("12");
+        expect(screen.queryByRole("button", { name: "Jogar dado" })).not.toBeInTheDocument();
+    });
+
+    it("says the opponent won when the server ends the match on reconnection forfeit", async () => {
+        useStore.setState({
+            matchState: baseMatch({
+                matchStatus: "MATCH_FINISHED",
+                roundState: "ROUND_RESOLVED",
+                winnerTeam: "A",
+                finishReason: "RECONNECTION_FORFEIT",
+            }),
+            matchEnded: { winnerTeam: "A", finishReason: "RECONNECTION_FORFEIT", abandonedByNickname: null },
+        });
+
+        render(<GamePage />);
+        expect(await screen.findByText(/Vitoria por desconexao/)).toBeInTheDocument();
+        expect(screen.getByText("Time A venceu")).toBeInTheDocument();
     });
 });

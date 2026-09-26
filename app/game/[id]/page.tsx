@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeftEndOnRectangleIcon } from "@heroicons/react/20/solid";
 import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
 import MatchBoard from "@/components/game/MatchBoard";
+import PauseBanner from "@/components/game/PauseBanner";
 import RoundClock from "@/components/game/RoundClock";
 import Logo from "@/components/Logo";
 import Modal from "@/components/Modal";
 import {
     categoryLabel,
     chatAccess,
+    connectionStatusAfterRestore,
     feedbackLabel,
     finishReasonLabel,
     playerName,
@@ -57,6 +59,10 @@ export default function GamePage() {
         forfeitMatch,
         abandonMatch,
         prepareRematch,
+        refreshMatchFromServer,
+        connectionStatus,
+        isRestoring,
+        restoreError,
     } = useStore();
 
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,47 +70,102 @@ export default function GamePage() {
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [playerAId, setPlayerAId] = useState("");
     const [playerBId, setPlayerBId] = useState("");
+    const cancelledRef = useRef(false);
 
-    useEffect(() => {
-        let cancelled = false;
+    const restoreMatch = useCallback(() => {
+        useStore.setState({
+            isRestoring: true,
+            connectionStatus: "RESTORING_STATE",
+            restoreError: null,
+        });
+        setLoadError(null);
+        return fetchTable(tableId)
+            .catch(() => undefined)
+            .then(() => fetchMatchByTable(tableId))
+            .then((match) => {
+                if (cancelledRef.current) return;
+                if (match) connectToMatch(match.matchId);
+                const current = useStore.getState();
+                useStore.setState({
+                    isRestoring: false,
+                    restoreError: null,
+                    connectionStatus: connectionStatusAfterRestore(current.matchState, current.user?.id ?? null),
+                });
+            })
+            .catch((error) => {
+                if (cancelledRef.current) return;
+                if (error instanceof ApiClientError && error.response.status === 404) {
+                    useStore.setState({
+                        isRestoring: false,
+                        connectionStatus: "CONNECTED",
+                        restoreError: null,
+                    });
+                    setLoadError("Nenhuma partida ativa nesta mesa.");
+                    return;
+                }
+                const message = error instanceof Error ? error.message : "Nao foi possivel restaurar a partida.";
+                useStore.setState({
+                    isRestoring: false,
+                    connectionStatus: "RESTORING_STATE",
+                    restoreError: message,
+                });
+                setLoadError(message);
+            });
+    }, [connectToMatch, fetchMatchByTable, fetchTable, tableId]);
+
+    useLayoutEffect(() => {
+        cancelledRef.current = false;
+        useStore.setState({
+            isRestoring: true,
+            connectionStatus: "RESTORING_STATE",
+            restoreError: null,
+        });
 
         restoreAuth()
             .then((restored) => {
-                if (cancelled) return;
+                if (cancelledRef.current) return;
                 if (!restored && !useStore.getState().isAuthenticated) {
                     router.replace("/login");
                     return;
                 }
                 connectWebSocket(() => {
-                    fetchTable(tableId).catch(() => undefined);
-                    fetchMatchByTable(tableId)
-                        .then((match) => {
-                            if (!cancelled && match) connectToMatch(match.matchId);
-                        })
-                        .catch((error) => {
-                            if (cancelled) return;
-                            if (error instanceof ApiClientError && error.response.status === 404) {
-                                setLoadError("Nenhuma partida ativa nesta mesa.");
-                                return;
-                            }
-                            setLoadError(error instanceof Error ? error.message : "Nao foi possivel carregar a partida.");
-                        });
+                    if (!cancelledRef.current) void restoreMatch();
                 });
             })
             .catch(() => {
-                if (!cancelled) router.replace("/login");
+                if (!cancelledRef.current) router.replace("/login");
             });
 
         return () => {
-            cancelled = true;
+            cancelledRef.current = true;
             disconnectWebSocket();
         };
-    }, [connectToMatch, connectWebSocket, disconnectWebSocket, fetchMatchByTable, fetchTable, restoreAuth, router, tableId]);
+    }, [connectWebSocket, disconnectWebSocket, restoreAuth, restoreMatch, router]);
 
-    if (!matchState) {
+    const recovering = isRestoring
+        || connectionStatus === "RECONNECTING"
+        || connectionStatus === "RESTORING_STATE"
+        || connectionStatus === "DISCONNECTED_FINAL";
+
+    if (recovering || !matchState) {
+        const title = connectionStatus === "DISCONNECTED_FINAL"
+            ? "Conexao encerrada"
+            : connectionStatus === "RECONNECTING"
+                ? "Reconectando..."
+                : "Restaurando a partida...";
         return (
             <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: "var(--color-background)" }}>
-                <p className="text-gray-700">{loadError || "Carregando partida..."}</p>
+                <div className="max-w-md text-center" role="status">
+                    <p className="text-gray-800">{recovering ? title : (loadError || "Carregando partida...")}</p>
+                    {(restoreError || (recovering && loadError)) && (
+                        <p className="mt-2 text-sm text-red-600">{restoreError || loadError}</p>
+                    )}
+                    {(connectionStatus === "DISCONNECTED_FINAL" || restoreError) && (
+                        <Button className="mt-4" variant="primary" onClick={() => { void restoreMatch(); }}>
+                            Tentar de novo
+                        </Button>
+                    )}
+                </div>
             </div>
         );
     }
@@ -183,7 +244,7 @@ export default function GamePage() {
                         )}
                         {matchError && <p className="mb-3 text-sm text-red-600">{matchError}</p>}
                         {matchState.isPaused && (
-                            <p className="mb-3 text-sm text-amber-800">Partida pausada. Os comandos ficam bloqueados ate o servidor retomar.</p>
+                            <PauseBanner match={matchState} onDeadline={() => { void refreshMatchFromServer(); }} />
                         )}
 
                         {matchState.matchStatus === "MATCH_SETUP" && (

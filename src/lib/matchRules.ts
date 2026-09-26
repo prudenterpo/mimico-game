@@ -3,6 +3,7 @@ import {
     ActionAccess,
     AuthoritativeMatchState,
     ChatAccess,
+    ConnectionStatus,
     GameRoundState,
     MatchEndedView,
     MatchGuess,
@@ -331,15 +332,46 @@ export const sorteioRollEligibility = (
     return { allowed: true, reason: "Role o dado do sorteio. O servidor decide o vencedor." };
 };
 
+const secondsBetween = (start: string | null, end: string | null): number | null => {
+    if (!start || !end) return null;
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) return null;
+    return Math.max(0, Math.ceil((endMs - startMs) / 1000));
+};
+
 export const remainingSeconds = (state: AuthoritativeMatchState, nowMs: number): number | null => {
     if (state.roundState !== "ROUND_GUESSING" || state.matchStatus === "MATCH_FINISHED") return null;
     if (state.isPaused || state.matchStatus === "MATCH_PAUSED") {
-        return state.remainingRoundSecondsOnPause;
+        if (state.remainingRoundSecondsOnPause != null) return state.remainingRoundSecondsOnPause;
+        return secondsBetween(state.pausedAt, state.timerEndsAt);
     }
     if (!state.timerEndsAt) return null;
     const endsAt = Date.parse(state.timerEndsAt);
     if (Number.isNaN(endsAt)) return null;
     return Math.max(0, Math.ceil((endsAt - nowMs) / 1000));
+};
+
+export const remainingReconnectSeconds = (state: AuthoritativeMatchState, nowMs: number): number | null => {
+    if (!state.isPaused && state.matchStatus !== "MATCH_PAUSED") return null;
+    if (!state.reconnectDeadline) return null;
+    const deadline = Date.parse(state.reconnectDeadline);
+    if (Number.isNaN(deadline)) return null;
+    return Math.max(0, Math.ceil((deadline - nowMs) / 1000));
+};
+
+export const connectionStatusAfterRestore = (
+    state: AuthoritativeMatchState | null,
+    userId: string | null
+): ConnectionStatus => {
+    if (!state) return "CONNECTED";
+    if (state.finishReason === "RECONNECTION_FORFEIT" || state.matchStatus === "MATCH_FINISHED") {
+        return state.finishReason === "RECONNECTION_FORFEIT" ? "RECOVERY_TIMEOUT" : "CONNECTED";
+    }
+    if ((state.isPaused || state.matchStatus === "MATCH_PAUSED") && userId && state.disconnectedUserId === userId) {
+        return "PAUSED_BY_DISCONNECTION";
+    }
+    return "CONNECTED";
 };
 
 export const deriveDiceValue = (
@@ -397,7 +429,7 @@ export const finishReasonLabel = (reason: string | null): string => {
         case "BOARD_WIN":
             return "O time chegou na casa 52.";
         case "RECONNECTION_FORFEIT":
-            return "A partida terminou por desconexao.";
+            return "Vitoria por desconexao. O outro time venceu porque a reconexao estourou o prazo.";
         case "MANUAL_FORFEIT":
             return "A partida terminou por desistencia.";
         case "ADMIN_CANCELLED":
