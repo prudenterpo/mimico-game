@@ -1,525 +1,343 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useStore } from "@/stores/store";
-import { stompClient } from "@/lib/stomp";
-import Button from "@/components/Button";
-import Avatar from "@/components/Avatar";
-import Logo from "@/components/Logo";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import Modal from "@/components/Modal";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeftEndOnRectangleIcon } from "@heroicons/react/20/solid";
+import Avatar from "@/components/Avatar";
+import Button from "@/components/Button";
+import MatchBoard from "@/components/game/MatchBoard";
+import RoundClock from "@/components/game/RoundClock";
+import Logo from "@/components/Logo";
+import Modal from "@/components/Modal";
+import {
+    categoryLabel,
+    chatAccess,
+    feedbackLabel,
+    finishReasonLabel,
+    playerName,
+    rollEligibility,
+    sorteioRollEligibility,
+    sorteioSelectEligibility,
+    wordEligibility,
+} from "@/lib/matchRules";
+import { useStore } from "@/stores/store";
+import { ApiClientError } from "@/lib/api";
 
 export default function GamePage() {
     const params = useParams();
     const router = useRouter();
-    const gameId = params.id as string;
-
+    const tableId = params.id as string;
     const {
         user,
         currentTable,
+        matchState,
+        wordCard,
+        selectedWordId,
+        matchGuesses,
+        matchError,
+        roundFeedback,
+        lastDiceValue,
+        diceRequestPending,
+        wordRequestPending,
+        sorteio,
+        matchEnded,
+        restoreAuth,
+        connectWebSocket,
+        disconnectWebSocket,
+        fetchTable,
+        fetchMatchByTable,
+        connectToMatch,
+        rollDice,
+        drawWordCard,
+        selectWord,
+        sendMatchChat,
+        selectSorteioPlayers,
+        rollSorteio,
+        forfeitMatch,
         abandonMatch,
-        isMatchStarted
+        prepareRematch,
     } = useStore();
 
-    const [timeLeft, setTimeLeft] = useState(60);
-    const [isRolling, setIsRolling] = useState(false);
-    const [diceResult, setDiceResult] = useState<number | null>(null);
-    const [gamePhase, setGamePhase] = useState<"dice" | "word-selection" | "mime" | "waiting">("dice");
-    const [currentMime] = useState("João Silva");
-    const [teamAPosition, setTeamAPosition] = useState(5);
-    const [teamBPosition, setTeamBPosition] = useState(12);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [message, setMessage] = useState("");
     const [showLeaveModal, setShowLeaveModal] = useState(false);
-    const [matchResult, setMatchResult] = useState<{
-        winnerTeam: string;
-        reason: string;
-        abandonedByNickname?: string;
-    } | null>(null);
+    const [playerAId, setPlayerAId] = useState("");
+    const [playerBId, setPlayerBId] = useState("");
 
     useEffect(() => {
-        if (isMatchStarted) router.push(`/game/${currentTable?.id}`);
-    }, [isMatchStarted]);
+        let cancelled = false;
 
-    useEffect(() => {
-        if (gamePhase === "mime" && timeLeft > 0) {
-            const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-            return () => clearTimeout(timer);
-        }
-    }, [timeLeft, gamePhase]);
-
-    useEffect(() => {
-        if (!gameId || !stompClient.isConnected()) return;
-
-        stompClient.subscribe(`/topic/table/${gameId}/match-ended`, (message) => {
-            if (message.type === "MATCH_ENDED") {
-                const data = message.data;
-                setMatchResult({
-                    winnerTeam: data.winnerTeam,
-                    reason: data.reason,
-                    abandonedByNickname: data.abandonedByNickname,
+        restoreAuth()
+            .then((restored) => {
+                if (cancelled) return;
+                if (!restored && !useStore.getState().isAuthenticated) {
+                    router.replace("/login");
+                    return;
+                }
+                connectWebSocket(() => {
+                    fetchTable(tableId).catch(() => undefined);
+                    fetchMatchByTable(tableId)
+                        .then((match) => {
+                            if (!cancelled && match) connectToMatch(match.matchId);
+                        })
+                        .catch((error) => {
+                            if (cancelled) return;
+                            if (error instanceof ApiClientError && error.response.status === 404) {
+                                setLoadError("Nenhuma partida ativa nesta mesa.");
+                                return;
+                            }
+                            setLoadError(error instanceof Error ? error.message : "Nao foi possivel carregar a partida.");
+                        });
                 });
-            }
-        });
+            })
+            .catch(() => {
+                if (!cancelled) router.replace("/login");
+            });
 
         return () => {
-            stompClient.unsubscribe(`/topic/table/${gameId}/match-ended`);
+            cancelled = true;
+            disconnectWebSocket();
         };
-    }, [gameId]);
+    }, [connectToMatch, connectWebSocket, disconnectWebSocket, fetchMatchByTable, fetchTable, restoreAuth, router, tableId]);
 
-    const handleRollDice = async () => {
-        setIsRolling(true);
-        setTimeout(() => {
-            const result = Math.floor(Math.random() * 6) + 1;
-            setDiceResult(result);
-            setIsRolling(false);
-            setGamePhase("word-selection");
-        }, 2000);
-    };
+    if (!matchState) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: "var(--color-background)" }}>
+                <p className="text-gray-700">{loadError || "Carregando partida..."}</p>
+            </div>
+        );
+    }
 
-    const handleWordSelection = (word: string) => {
-        setGamePhase("mime");
-        setTimeLeft(60);
-    };
+    const userId = user?.id ?? null;
+    const roll = rollEligibility(matchState, userId);
+    const word = wordEligibility(matchState, userId);
+    const chat = chatAccess(matchState, userId);
+    const hostId = currentTable?.hostId ?? null;
+    const sorteioSelect = sorteioSelectEligibility(matchState, userId, hostId);
+    const sorteioRoll = sorteioRollEligibility(matchState, sorteio, userId);
+    const mimeName = playerName(matchState, matchState.currentMimePlayerId);
+    const selectedWord = wordCard.find((entry) => entry.wordId === selectedWordId) || null;
+    const isMime = Boolean(userId && userId === matchState.currentMimePlayerId);
+    const finished = Boolean(matchEnded || matchState.matchStatus === "MATCH_FINISHED" || matchState.winnerTeam);
+    const winner = matchEnded?.winnerTeam || matchState.winnerTeam;
+    const finishReason = matchEnded?.finishReason || matchState.finishReason;
+    const teamAPlayers = matchState.players.filter((player) => player.team === "A");
+    const teamBPlayers = matchState.players.filter((player) => player.team === "B");
+    const isHost = Boolean(userId && hostId && userId === hostId);
 
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (message.trim()) {
-            setMessage("");
-        }
-    };
-
-    const handleAbandonMatch = () => {
-        if (!currentTable?.id) {
-            console.error("[DEBUG] No currentTable!");
-            return;
-        }
-        abandonMatch(currentTable.id);
-        setShowLeaveModal(false);
-    };
-
-    const generateWindingPath = () => {
-        const coords = [];
-        const rows = 8;
-        const cols = 13;
-        let currentPos = 0;
-
-        for (let col = 0; col < cols && currentPos < 52; col++) {
-            coords.push({ x: 10 + (col * 80) / cols, y: 85 });
-            currentPos++;
-        }
-
-        for (let row = rows - 2; row >= 0 && currentPos < 52; row--) {
-            coords.push({ x: 90, y: 15 + (row * 70) / (rows - 1) });
-            currentPos++;
-        }
-
-        for (let col = cols - 2; col >= 0 && currentPos < 52; col--) {
-            coords.push({ x: 10 + (col * 80) / cols, y: 15 });
-            currentPos++;
-        }
-
-        for (let row = 1; row < rows - 1 && currentPos < 52; row++) {
-            coords.push({ x: 10, y: 15 + (row * 70) / (rows - 1) });
-            currentPos++;
-        }
-
-        let innerMargin = 15;
-        while (currentPos < 52) {
-            coords.push({
-                x: 20 + innerMargin + (currentPos % 4) * 15,
-                y: 30 + innerMargin + Math.floor((currentPos % 8) / 4) * 15,
-            });
-            currentPos++;
-        }
-
-        return coords;
-    };
-
-    const createWindingPath = () => {
-        const spaces = [];
-        const specialTiles = [5, 11, 17, 23, 29, 35, 40, 44, 48, 51];
-        const pathCoordinates = generateWindingPath();
-
-        for (let i = 1; i <= 52; i++) {
-            const isSpecial = specialTiles.includes(i);
-            const hasTeamA = teamAPosition === i;
-            const hasTeamB = teamBPosition === i;
-            const coord = pathCoordinates[i - 1];
-
-            spaces.push(
-                <div
-                    key={i}
-                    className={`absolute w-8 h-8 rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                        isSpecial
-                            ? "bg-amber-100 border-amber-400 text-amber-800"
-                            : "bg-white border-gray-300 text-gray-600"
-                    }`}
-                    style={{
-                        left: `${coord.x}%`,
-                        top: `${coord.y}%`,
-                        transform: "translate(-50%, -50%)",
-                    }}
-                >
-                    {i}
-                    {hasTeamA && (
-                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-teal-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
-                    )}
-                    {hasTeamB && (
-                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-orange-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
-                    )}
-                </div>
-            );
-        }
-        return spaces;
+    const handleChat = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (chat.mode === "disabled") return;
+        sendMatchChat(message);
+        setMessage("");
     };
 
     return (
-        <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
-            <header className="bg-white shadow-sm px-4 py-3 flex-shrink-0">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/lobby" className="transition-opacity hover:opacity-80">
+        <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--color-background)" }}>
+            <header className="sticky top-0 z-20 bg-white shadow-sm px-4 py-3">
+                <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Link href="/lobby" className="shrink-0" aria-label="Ir para o lobby">
                             <Logo size="md" />
                         </Link>
-                        <div>
-                            <h1 className="text-xl font-heading" style={{ color: "var(--color-accent)" }}>
-                                Mímico - Partida
+                        <div className="min-w-0">
+                            <h1 className="text-xl font-heading truncate" style={{ color: "var(--color-accent)" }}>
+                                Mimico
                             </h1>
-                            <p className="text-sm text-gray-500">{currentTable?.name || "Mesa"}</p>
+                            <p className="text-sm text-gray-600 truncate">
+                                Time {matchState.currentTeam || "—"} · {mimeName} na mimica
+                            </p>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex items-center gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-teal-500 rounded-full" />
-                                <span>Time A: {teamAPosition}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-orange-500 rounded-full" />
-                                <span>Time B: {teamBPosition}</span>
-                            </div>
-                        </div>
-                        <Button
-                            onClick={() => setShowLeaveModal(true)}
-                            variant="ghost"
-                            className="text-red-600 hover:text-red-700"
-                        >
+                    <div className="flex items-center gap-3">
+                        <RoundClock match={matchState} />
+                        <Button variant="ghost" className="text-red-600" onClick={() => setShowLeaveModal(true)}>
                             Sair
                         </Button>
                     </div>
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col lg:hidden p-4 gap-4">
-                {gamePhase === "mime" ? (
-                    <div className="bg-white rounded-lg shadow-lg p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                            <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
-                                {currentMime} fazendo mímica
-                            </h3>
-                            <div className="flex items-center gap-2">
-                                <div className={`text-xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
-                                    {timeLeft}s
-                                </div>
-                                <div className="text-2xl">⏳</div>
-                            </div>
+            <div className="max-w-7xl mx-auto w-full p-4 flex flex-col gap-4 lg:grid lg:grid-cols-3">
+                <section className="order-2 lg:order-1 lg:col-span-2 bg-white rounded-lg shadow-lg p-4 sm:p-6" aria-label="Tabuleiro e placar">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>Tabuleiro</h2>
+                        <div className="flex gap-4 text-sm">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-teal-500" /> Time A: {matchState.teamAPosition}</span>
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-orange-500" /> Time B: {matchState.teamBPosition}</span>
                         </div>
+                    </div>
+                    <MatchBoard teamAPosition={matchState.teamAPosition} teamBPosition={matchState.teamBPosition} />
+                    {matchState.isSpecialTile && matchState.roundState === "ROUND_GUESSING" && (
+                        <p className="mt-3 text-sm text-amber-800">Casa especial. O outro time tambem pode chutar e roubar a vez.</p>
+                    )}
+                </section>
 
-                        <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center mb-4">
-                            <div className="text-white text-center">
-                                <div className="text-4xl mb-2">📹</div>
-                                <div>{currentMime}</div>
+                <div className="order-1 lg:order-2 space-y-4">
+                    <section className="bg-white rounded-lg shadow-lg p-4" aria-label="Acao da rodada">
+                        {roundFeedback && (
+                            <p role="status" className="mb-3 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-900">
+                                {feedbackLabel(roundFeedback)}
+                            </p>
+                        )}
+                        {matchError && <p className="mb-3 text-sm text-red-600">{matchError}</p>}
+                        {matchState.isPaused && (
+                            <p className="mb-3 text-sm text-amber-800">Partida pausada. Os comandos ficam bloqueados ate o servidor retomar.</p>
+                        )}
+
+                        {matchState.matchStatus === "MATCH_SETUP" && (
+                            <div className="space-y-3">
+                                <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>Sorteio inicial</h3>
+                                <p className="text-sm text-gray-600">{sorteioSelect.allowed ? sorteioSelect.reason : sorteioRoll.reason}</p>
+                                {sorteio?.tie && (
+                                    <p role="status" className="text-sm text-amber-800">
+                                        Empate {sorteio.tieRollA} a {sorteio.tieRollB}. Rolem de novo.
+                                    </p>
+                                )}
+                                {sorteioSelect.allowed && (
+                                    <form
+                                        className="space-y-3"
+                                        onSubmit={(event) => {
+                                            event.preventDefault();
+                                            selectSorteioPlayers(playerAId, playerBId);
+                                        }}
+                                    >
+                                        <label className="block text-sm" htmlFor="sorteio-player-a">Jogador do Time A</label>
+                                        <select id="sorteio-player-a" className="w-full rounded-lg border px-3 py-3" value={playerAId} onChange={(event) => setPlayerAId(event.target.value)}>
+                                            <option value="">Escolha</option>
+                                            {teamAPlayers.map((player) => <option key={player.userId} value={player.userId}>{player.nickname}</option>)}
+                                        </select>
+                                        <label className="block text-sm" htmlFor="sorteio-player-b">Jogador do Time B</label>
+                                        <select id="sorteio-player-b" className="w-full rounded-lg border px-3 py-3" value={playerBId} onChange={(event) => setPlayerBId(event.target.value)}>
+                                            <option value="">Escolha</option>
+                                            {teamBPlayers.map((player) => <option key={player.userId} value={player.userId}>{player.nickname}</option>)}
+                                        </select>
+                                        <Button type="submit" variant="primary" fullWidth disabled={!playerAId || !playerBId}>Confirmar jogadores</Button>
+                                    </form>
+                                )}
+                                {sorteioRoll.allowed && (
+                                    <Button type="button" variant="primary" fullWidth className="min-h-12" onClick={rollSorteio}>
+                                        Rolar dado do sorteio
+                                    </Button>
+                                )}
+                                {(sorteio?.rollA || sorteio?.rollB) && (
+                                    <p className="text-sm text-gray-700">
+                                        Time A: {sorteio.rollA ?? "—"} · Time B: {sorteio.rollB ?? "—"}
+                                    </p>
+                                )}
                             </div>
-                        </div>
+                        )}
 
-                        <div className="grid grid-cols-3 gap-2">
-                            {["Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
-                                <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
-                                    <Avatar nickname={name} size="sm" />
+                        {roll.allowed && (
+                            <div className="text-center space-y-3">
+                                <h3 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>Sua equipe joga o dado</h3>
+                                <p className="text-5xl" aria-hidden="true">{diceRequestPending ? "🎲" : "🎲"}</p>
+                                {lastDiceValue && <p className="text-2xl font-bold">Avanco: {lastDiceValue}</p>}
+                                <Button type="button" variant="primary" fullWidth className="min-h-12 text-lg" onClick={rollDice} disabled={diceRequestPending}>
+                                    {diceRequestPending ? "Aguardando o servidor..." : "Jogar dado"}
+                                </Button>
+                            </div>
+                        )}
+
+                        {!roll.allowed && matchState.roundState === "ROUND_WAITING_FOR_DICE" && matchState.matchStatus === "MATCH_ACTIVE" && (
+                            <div className="text-center space-y-2">
+                                <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>Aguardando o dado</h3>
+                                {lastDiceValue && <p className="text-2xl font-bold">Avanco: {lastDiceValue}</p>}
+                                <p className="text-sm text-gray-600">{roll.reason}</p>
+                                <Button type="button" variant="primary" fullWidth disabled>Jogar dado</Button>
+                            </div>
+                        )}
+
+                        {matchState.roundState === "ROUND_WAITING_FOR_WORD_SELECTION" && (
+                            <div className="space-y-3">
+                                <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>Carta de palavras</h3>
+                                <p className="text-sm text-gray-600">{word.reason}</p>
+                                {word.allowed && wordCard.length === 0 && (
+                                    <Button type="button" variant="primary" fullWidth className="min-h-12" onClick={drawWordCard} disabled={wordRequestPending}>
+                                        {wordRequestPending ? "Sorteando..." : "Sortear carta"}
+                                    </Button>
+                                )}
+                                {word.allowed && wordCard.length > 0 && (
+                                    <div className="grid gap-3">
+                                        {wordCard.map((entry) => (
+                                            <button
+                                                key={entry.wordId}
+                                                type="button"
+                                                onClick={() => selectWord(entry.wordId)}
+                                                className="min-h-12 rounded-lg border-2 border-teal-200 bg-teal-50 p-3 text-left"
+                                            >
+                                                <span className="block text-xs text-teal-700">{categoryLabel(entry.category)}</span>
+                                                <span className="text-lg font-semibold">{entry.text}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {matchState.roundState === "ROUND_GUESSING" && (
+                            <div className="space-y-2 text-center">
+                                <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>{mimeName} fazendo mimica</h3>
+                                {isMime && selectedWord && (
+                                    <p className="rounded-lg bg-teal-50 p-3 text-teal-900">Sua palavra: {selectedWord.text}</p>
+                                )}
+                                {isMime && !selectedWord && (
+                                    <p className="text-sm text-gray-600">A palavra ficou so com voce. Faca a mimica sem falar.</p>
+                                )}
+                                {!isMime && <p className="text-sm text-gray-600">A palavra e privada do mimico.</p>}
+                            </div>
+                        )}
+                    </section>
+
+                    <section className="bg-white rounded-lg shadow-lg p-4" aria-label="Jogadores">
+                        <h3 className="font-semibold mb-3" style={{ color: "var(--color-accent)" }}>Jogadores</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {matchState.players.map((player) => (
+                                <div key={player.userId} className="rounded-lg bg-gray-100 p-2 text-center">
+                                    <Avatar nickname={player.nickname} size="sm" />
+                                    <p className="mt-1 text-xs font-semibold truncate">{player.nickname}</p>
+                                    <p className="text-xs text-gray-500">
+                                        Time {player.team}
+                                        {player.userId === matchState.currentMimePlayerId ? " · mimica" : ""}
+                                    </p>
                                 </div>
                             ))}
                         </div>
-                    </div>
-                ) : (
-                    <div className="bg-white rounded-lg shadow-lg p-4">
-                        <h3 className="font-semibold mb-4 text-center" style={{ color: "var(--color-accent)" }}>
-                            Tabuleiro
-                        </h3>
-                        <div className="relative h-64 bg-gray-50 rounded-lg overflow-hidden">
-                            {createWindingPath()}
-                        </div>
-                        <div className="mt-3 flex justify-center gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-teal-500 rounded-full" />
-                                <span>Time A: {teamAPosition}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-orange-500 rounded-full" />
-                                <span>Time B: {teamBPosition}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                    </section>
 
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                    {gamePhase === "dice" && (
-                        <div className="text-center">
-                            <h3 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
-                                Sua vez de jogar!
-                            </h3>
-                            <div className="mb-6">
-                                {isRolling ? (
-                                    <div className="text-6xl animate-spin">🎲</div>
-                                ) : diceResult ? (
-                                    <div className="text-6xl mb-2">🎲</div>
-                                ) : (
-                                    <div className="text-6xl opacity-50">🎲</div>
-                                )}
-                                {diceResult && (
-                                    <div className="text-3xl font-bold mt-2" style={{ color: "var(--color-accent)" }}>
-                                        {diceResult}
-                                    </div>
-                                )}
-                            </div>
-                            <Button onClick={handleRollDice} disabled={isRolling} variant="primary" fullWidth className="py-4 text-lg">
-                                {isRolling ? "Jogando..." : "Jogar Dado"}
-                            </Button>
-                        </div>
-                    )}
-
-                    {gamePhase === "word-selection" && (
-                        <div className="text-center">
-                            <h3 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
-                                Escolha uma categoria:
-                            </h3>
-                            <div className="space-y-3">
-                                {[
-                                    { word: "Cachorro", category: "Eu sou", color: "bg-blue-100 border-blue-300 text-blue-800" },
-                                    { word: "Correr", category: "Eu faço", color: "bg-green-100 border-green-300 text-green-800" },
-                                    { word: "Telefone", category: "Objeto", color: "bg-purple-100 border-purple-300 text-purple-800" },
-                                ].map((item, index) => (
-                                    <div
-                                        key={index}
-                                        onClick={() => handleWordSelection(item.word)}
-                                        className={`p-4 rounded-lg border-2 cursor-pointer hover:shadow-md transition-all ${item.color}`}
-                                    >
-                                        <div className="text-sm opacity-70">{item.category}</div>
-                                        <div className="text-lg font-semibold">{item.word}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {gamePhase === "mime" && (
-                        <div className="text-center">
-                            <div className="mb-4">
-                                <div className="text-4xl mb-3">⏳</div>
-                                <div className={`text-3xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
-                                    {timeLeft}s
-                                </div>
-                                <div className="text-sm text-gray-500 mt-1">restantes</div>
-                            </div>
-                            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                                <p className="text-teal-800 font-semibold">Palavra: "Cachorro"</p>
-                                <p className="text-teal-600 text-sm mt-1">Faça gestos para sua equipe adivinhar!</p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="bg-white rounded-lg shadow-lg flex-1 flex flex-col min-h-60">
-                    <div className="p-4 border-b">
-                        <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
-                            Chat do Jogo
-                        </h3>
-                        {gamePhase === "mime" && <p className="text-xs text-teal-600 mt-1">Digite para adivinhar a palavra!</p>}
-                    </div>
-
-                    <div className="flex-1 p-4 overflow-y-auto">
-                        <div className="text-center text-gray-500 text-sm">
-                            <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-gray-100 flex items-center justify-center">
-                                <span className="text-xl">💬</span>
-                            </div>
-                            {gamePhase === "mime" ? "Digite suas tentativas aqui..." : "Aguardando próxima rodada..."}
-                        </div>
-                    </div>
-
-                    <div className="p-4 border-t">
-                        <form onSubmit={handleSendMessage} className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder={gamePhase === "mime" ? "Sua resposta..." : "Digite uma mensagem..."}
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                className="flex-1 px-3 py-2 bg-gray-50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
-                            />
-                            <Button variant="teal" className="px-4">
-                                Enviar
-                            </Button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <div className="hidden lg:flex flex-1 max-w-7xl mx-auto w-full p-4 gap-4">
-                <div className="w-2/3 bg-white rounded-lg shadow-lg p-6">
-                    <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
-                        Tabuleiro - Imagem e Ação
-                    </h2>
-
-                    <div className="relative h-96 bg-gray-50 rounded-lg overflow-hidden mb-4">{createWindingPath()}</div>
-
-                    <div className="flex justify-center gap-6 text-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-teal-500 rounded-full" />
-                            <span>Time A: Posição {teamAPosition}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-orange-500 rounded-full" />
-                            <span>Time B: Posição {teamBPosition}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="w-1/3 space-y-4">
-                    <div className="bg-white rounded-lg shadow-lg p-4">
-                        <h3 className="font-semibold mb-3" style={{ color: "var(--color-accent)" }}>
-                            Vídeo Chamada
-                        </h3>
-
-                        {gamePhase === "mime" ? (
-                            <div className="space-y-3">
-                                <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center relative">
-                                    <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
-                                        {currentMime} (Fazendo mímica)
-                                    </div>
-                                    <div className="text-white text-center">
-                                        <div className="text-3xl mb-2">📹</div>
-                                        <div>{currentMime}</div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-2">
-                                    {["Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
-                                        <div key={index} className="aspect-video bg-gray-200 rounded flex items-center justify-center text-xs">
-                                            <Avatar nickname={name} size="sm" />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                                {["João Silva", "Maria Santos", "Pedro Costa", "Ana Lima"].map((name, index) => (
-                                    <div key={index} className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
-                                        <Avatar nickname={name} size="md" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow-lg flex-1 flex flex-col">
+                    <section className="bg-white rounded-lg shadow-lg flex flex-col min-h-64" aria-label="Chat da partida">
                         <div className="p-4 border-b">
-                            <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>
-                                Chat do Jogo
-                            </h3>
-                            <p className="text-xs text-gray-500">
-                                {gamePhase === "mime" ? "Digite para adivinhar!" : "Converse com sua equipe"}
-                            </p>
+                            <h3 className="font-semibold" style={{ color: "var(--color-accent)" }}>Chat da partida</h3>
+                            <p className="text-xs text-gray-600">{chat.reason}</p>
                         </div>
+                        <div className="flex-1 p-4 space-y-2 overflow-y-auto max-h-64">
+                            {matchGuesses.length === 0 && <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>}
+                            {matchGuesses.map((guess) => (
+                                <p key={guess.id} className="text-sm text-gray-800 break-words">
+                                    <span className="font-semibold">{guess.playerName}: </span>
+                                    {guess.isCorrect ? "acertou a palavra" : guess.message}
+                                </p>
+                            ))}
+                        </div>
+                        <form onSubmit={handleChat} className="p-4 border-t flex gap-2">
+                            <label htmlFor="match-chat-message" className="sr-only">Mensagem da partida</label>
+                            <input
+                                id="match-chat-message"
+                                value={message}
+                                disabled={chat.mode === "disabled"}
+                                onChange={(event) => setMessage(event.target.value)}
+                                placeholder={chat.mode === "guess" ? "Sua resposta..." : "Digite uma mensagem..."}
+                                className="flex-1 px-3 py-3 bg-gray-50 rounded-lg"
+                            />
+                            <Button type="submit" variant="teal" disabled={chat.mode === "disabled"}>Enviar</Button>
+                        </form>
+                    </section>
 
-                        <div className="flex-1 p-4 overflow-y-auto min-h-48">
-                            <div className="text-center text-gray-500 text-sm">
-                                <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-gray-100 flex items-center justify-center">
-                                    <span className="text-xl">💬</span>
-                                </div>
-                                Chat do jogo aqui...
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t">
-                            <form onSubmit={handleSendMessage} className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Digite sua resposta..."
-                                    value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
-                                    className="flex-1 px-3 py-2 bg-gray-50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 transition-all duration-200 text-gray-800 placeholder-gray-500"
-                                />
-                                <Button variant="teal" className="px-4">
-                                    Enviar
-                                </Button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="hidden lg:block fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-                <div className="bg-white rounded-xl shadow-xl p-6 min-w-96">
-                    {gamePhase === "dice" && (
-                        <div className="text-center">
-                            <div className="flex items-center gap-4">
-                                <div className="text-4xl">
-                                    {isRolling ? <div className="animate-spin">🎲</div> : <div className="opacity-50">🎲</div>}
-                                </div>
-                                <div className="flex-1">
-                                    {diceResult && (
-                                        <div className="text-2xl font-bold" style={{ color: "var(--color-accent)" }}>
-                                            Resultado: {diceResult}
-                                        </div>
-                                    )}
-                                    <Button onClick={handleRollDice} disabled={isRolling} variant="primary" className="mt-2">
-                                        {isRolling ? "Jogando..." : "Jogar Dado"}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {gamePhase === "word-selection" && (
-                        <div>
-                            <h3 className="text-center text-lg font-semibold mb-4" style={{ color: "var(--color-accent)" }}>
-                                Escolha uma categoria:
-                            </h3>
-                            <div className="grid grid-cols-3 gap-3">
-                                {[
-                                    { word: "Cachorro", category: "Eu sou", color: "bg-blue-100 border-blue-300 text-blue-800" },
-                                    { word: "Correr", category: "Eu faço", color: "bg-green-100 border-green-300 text-green-800" },
-                                    { word: "Telefone", category: "Objeto", color: "bg-purple-100 border-purple-300 text-purple-800" },
-                                ].map((item, index) => (
-                                    <div
-                                        key={index}
-                                        onClick={() => handleWordSelection(item.word)}
-                                        className={`p-3 rounded-lg border-2 cursor-pointer hover:shadow-md transition-all text-center ${item.color}`}
-                                    >
-                                        <div className="text-xs opacity-70">{item.category}</div>
-                                        <div className="font-semibold">{item.word}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {gamePhase === "mime" && (
-                        <div className="text-center">
-                            <div className="flex items-center gap-4">
-                                <div className="text-3xl">⏳</div>
-                                <div className="flex-1">
-                                    <div className={`text-2xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-700"}`}>
-                                        {timeLeft} segundos
-                                    </div>
-                                    <div className="text-sm text-gray-500">restantes</div>
-                                </div>
-                            </div>
-                            <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-3">
-                                <p className="text-teal-800 font-semibold">Palavra: "Cachorro"</p>
-                            </div>
-                        </div>
+                    {matchState.isPaused && isHost && (
+                        <Button type="button" variant="secondary" fullWidth onClick={() => forfeitMatch().catch((error) => setLoadError(error instanceof Error ? error.message : "Nao foi possivel encerrar."))}>
+                            Encerrar partida pausada
+                        </Button>
                     )}
                 </div>
             </div>
@@ -528,56 +346,46 @@ export default function GamePage() {
                 <Modal
                     isOpen={showLeaveModal}
                     onClose={() => setShowLeaveModal(false)}
-                    title={
-                        <div className="flex items-center gap-3">
-                            <ArrowLeftEndOnRectangleIcon className="h-6 w-6 text-red-600" />
-                            <span className="font-heading text-2xl">Sair da Partida</span>
-                        </div>
-                    }
+                    title={<span className="flex items-center gap-2"><ArrowLeftEndOnRectangleIcon className="h-6 w-6 text-red-600" /> Sair da partida</span>}
                     footer={
                         <>
-                            <Button variant="secondary" onClick={() => setShowLeaveModal(false)}>
-                                Cancelar
-                            </Button>
-                            <Button
-                                variant="primary"
-                                className="bg-red-600 hover:bg-red-700"
-                                onClick={() => handleAbandonMatch()}
-                            >
-                                Abandonar
-                            </Button>
+                            <Button variant="secondary" onClick={() => setShowLeaveModal(false)}>Cancelar</Button>
+                            <Button variant="primary" className="bg-red-600" onClick={() => { abandonMatch(tableId); setShowLeaveModal(false); }}>Abandonar</Button>
                         </>
                     }
                 >
-                    <p className="text-gray-600">
-                        Tem certeza que deseja abandonar a partida? Sua equipe perderá automaticamente.
-                    </p>
+                    <p className="text-gray-600">Abandonar encerra a partida para a mesa. O servidor define o time vencedor.</p>
                 </Modal>
             )}
 
-            {matchResult && (
+            {finished && (
                 <Modal
-                    isOpen={!!matchResult}
+                    isOpen={finished}
                     onClose={() => router.push("/lobby")}
-                    title={
-                        <div className="flex items-center gap-3">
-                            <span className="text-3xl">{matchResult.reason === "ABANDONED" ? "🏳️" : "🏆"}</span>
-                            <span className="font-heading text-2xl">Partida Encerrada</span>
+                    title="Partida encerrada"
+                    footer={
+                        <div className="flex w-full flex-col gap-2 sm:flex-row">
+                            <Button variant="secondary" fullWidth onClick={() => router.push("/lobby")}>Voltar ao lobby</Button>
+                            <Button
+                                variant="primary"
+                                fullWidth
+                                onClick={() => {
+                                    prepareRematch();
+                                    router.push(`/table/${matchState.tableId}`);
+                                }}
+                            >
+                                Jogar novamente
+                            </Button>
                         </div>
                     }
-                    footer={
-                        <Button variant="primary" onClick={() => router.push("/lobby")} fullWidth>
-                            Voltar ao Lobby
-                        </Button>
-                    }
                 >
-                    <div className="text-center py-4">
-                        <p className="text-2xl font-bold mb-2" style={{ color: "var(--color-accent)" }}>
-                            Time {matchResult.winnerTeam} venceu!
+                    <div className="py-2 text-center" role="status">
+                        <p className="text-2xl font-bold" style={{ color: "var(--color-accent)" }}>
+                            {winner ? `Time ${winner} venceu` : "Partida encerrada"}
                         </p>
-                        {matchResult.reason === "ABANDONED" && matchResult.abandonedByNickname && (
-                            <p className="text-gray-600">{matchResult.abandonedByNickname} abandonou a partida.</p>
-                        )}
+                        <p className="mt-2 text-gray-700">{finishReasonLabel(finishReason)}</p>
+                        {matchEnded?.abandonedByNickname && <p className="mt-1 text-gray-600">{matchEnded.abandonedByNickname} abandonou a partida.</p>}
+                        <p className="mt-3 text-sm text-gray-600">Time A na casa {matchState.teamAPosition}. Time B na casa {matchState.teamBPosition}.</p>
                     </div>
                 </Modal>
             )}
