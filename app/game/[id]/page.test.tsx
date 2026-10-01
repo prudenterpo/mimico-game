@@ -2,6 +2,7 @@ import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import GamePage from "./page";
+import { resetMediaStore } from "@/stores/mediaStore";
 import { useStore } from "@/stores/store";
 import { hostUser, matchId, tableId } from "@/test/fixtures/tableSetup";
 import { AuthoritativeMatchState } from "@/types/gameplay";
@@ -55,6 +56,7 @@ describe("GamePage", () => {
     const prepareRematch = vi.fn();
 
     beforeEach(() => {
+        resetMediaStore();
         vi.clearAllMocks();
         useStore.setState({
             user: hostUser,
@@ -126,6 +128,8 @@ describe("GamePage", () => {
 
         render(<GamePage />);
         expect(await screen.findByTestId("round-timer")).toHaveTextContent(/segundos/);
+        expect(screen.getByTestId(`media-tile-${players[0].userId}`)).toHaveAttribute("data-primary", "true");
+        expect(screen.getByTestId(`media-tile-${players[1].userId}`)).toHaveAttribute("data-primary", "false");
         expect(screen.queryByText("Gato")).not.toBeInTheDocument();
         expect(screen.getByLabelText("Mensagem da partida")).toBeEnabled();
         expect(screen.getAllByText(/Casa especial/i).length).toBeGreaterThan(0);
