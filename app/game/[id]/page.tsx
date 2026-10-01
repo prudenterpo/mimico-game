@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeftEndOnRectangleIcon } from "@heroicons/react/20/solid";
 import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
 import MatchBoard from "@/components/game/MatchBoard";
+import MatchMedia from "@/components/game/MatchMedia";
 import PauseBanner from "@/components/game/PauseBanner";
 import RoundClock from "@/components/game/RoundClock";
 import Logo from "@/components/Logo";
@@ -23,6 +24,7 @@ import {
     sorteioSelectEligibility,
     wordEligibility,
 } from "@/lib/matchRules";
+import { useMediaStore } from "@/stores/mediaStore";
 import { useStore } from "@/stores/store";
 import { ApiClientError } from "@/lib/api";
 
@@ -146,6 +148,43 @@ export default function GamePage() {
         || connectionStatus === "RECONNECTING"
         || connectionStatus === "RESTORING_STATE"
         || connectionStatus === "DISCONNECTED_FINAL";
+    const memberKey = matchState?.players.map((player) => player.userId).join("|") ?? "";
+    const mimeVideoRequired = Boolean(
+        user?.id
+        && matchState
+        && matchState.roundState === "ROUND_GUESSING"
+        && matchState.currentMimePlayerId === user.id
+        && matchState.matchStatus !== "MATCH_FINISHED"
+    );
+    const serverMediaPaused = Boolean(matchState?.isPaused && matchState.pauseReason === "MIME_MEDIA_FAILED");
+
+    useEffect(() => {
+        const current = useStore.getState();
+        const activeMatch = current.matchState;
+        const selfId = current.user?.id;
+        const stillRecovering = current.isRestoring
+            || current.connectionStatus === "RECONNECTING"
+            || current.connectionStatus === "RESTORING_STATE"
+            || current.connectionStatus === "DISCONNECTED_FINAL";
+        if (stillRecovering || !selfId || !activeMatch) return;
+        void useMediaStore.getState().join({
+            matchId: activeMatch.matchId,
+            localUserId: selfId,
+            remoteUserIds: activeMatch.players.map((player) => player.userId).filter((playerId) => playerId !== selfId),
+        });
+    }, [connectionStatus, isRestoring, matchState?.matchId, memberKey, user?.id]);
+
+    useEffect(() => {
+        useMediaStore.getState().setMimeVideoRequired(mimeVideoRequired);
+    }, [mimeVideoRequired]);
+
+    useEffect(() => {
+        useMediaStore.getState().setServerMediaPaused(serverMediaPaused);
+    }, [serverMediaPaused]);
+
+    useEffect(() => () => {
+        useMediaStore.getState().leave();
+    }, []);
 
     if (recovering || !matchState) {
         const title = connectionStatus === "DISCONNECTED_FINAL"
@@ -221,6 +260,7 @@ export default function GamePage() {
             </header>
 
             <div className="max-w-7xl mx-auto w-full p-4 flex flex-col gap-4 lg:grid lg:grid-cols-3">
+                <MatchMedia selfId={userId} mimeUserId={matchState.currentMimePlayerId} players={matchState.players} />
                 <section className="order-2 lg:order-1 lg:col-span-2 bg-white rounded-lg shadow-lg p-4 sm:p-6" aria-label="Tabuleiro e placar">
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>Tabuleiro</h2>
