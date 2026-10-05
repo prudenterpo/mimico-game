@@ -45,7 +45,7 @@ test("four Chromium clients reach a match with fake-camera video tiles", async (
             await acceptInvite(guest.page);
         }
 
-        await expect(hostClient.page.getByText("Aceito")).toHaveCount(4, { timeout: 60_000 });
+        await expect(hostClient.page.locator("article").filter({ hasText: "Aceito" })).toHaveCount(4, { timeout: 60_000 });
 
         await assignTwoAndTwo(hostClient.page, users.map((user) => user.nickname));
         await expect(hostClient.page.getByRole("button", { name: "Iniciar partida" })).toBeEnabled({ timeout: 30_000 });
