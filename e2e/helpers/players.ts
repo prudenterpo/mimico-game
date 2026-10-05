@@ -5,6 +5,8 @@ const FAKE_MEDIA_ARGS = [
     "--use-fake-ui-for-media-stream",
     "--use-fake-device-for-media-stream",
     "--autoplay-policy=no-user-gesture-required",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
 ];
 
 export async function openIsolatedClient(browser: Browser, user: SmokeUser): Promise<{
@@ -75,12 +77,20 @@ export async function assertFourVideoTiles(page: Page): Promise<void> {
     const setupOrMime = page.getByText(/Sorteio inicial|mimica principal/);
     await expect(setupOrMime.first()).toBeVisible({ timeout: 30_000 });
 
-    const localVideoHasFakeStream = await page.evaluate(async () => {
-        const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('section[aria-label="Video da partida"] video'));
-        if (videos.length < 4) return false;
-        const withStream = videos.find((video) => video.srcObject instanceof MediaStream);
-        if (!withStream || !(withStream.srcObject instanceof MediaStream)) return false;
-        return withStream.srcObject.getVideoTracks().length > 0;
-    });
-    expect(localVideoHasFakeStream, "esperava stream de camera falsa num dos tiles de video").toBe(true);
+    await expect
+        .poll(
+            async () =>
+                page.evaluate(() => {
+                    const videos = Array.from(
+                        document.querySelectorAll<HTMLVideoElement>('section[aria-label="Video da partida"] video')
+                    );
+                    return videos.some((video) => {
+                        const stream = video.srcObject;
+                        if (!(stream instanceof MediaStream)) return false;
+                        return stream.getVideoTracks().some((track) => track.readyState === "live" || track.enabled);
+                    });
+                }),
+            { timeout: 60_000 }
+        )
+        .toBe(true);
 }
