@@ -1,0 +1,84 @@
+name: e2e-four-client
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  four-client-video:
+    name: four-client-video-smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mimico
+          POSTGRES_PASSWORD: mimico123
+          POSTGRES_DB: mimico_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mimico -d mimico_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout mimico-game
+        uses: actions/checkout@v4
+
+      - name: Checkout api-mimico develop
+        uses: actions/checkout@v4
+        with:
+          repository: prudenterpo/api-mimico
+          ref: develop
+          path: api-mimico
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Start api-mimico
+        working-directory: api-mimico
+        run: |
+          nohup ./mvnw -q -DskipTests spring-boot:run > /tmp/api-mimico.log 2>&1 &
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/tables -H 'Content-Type: application/json' -d '{"name":"probe"}' || true)
+            if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              echo "API ready ($code)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not expose POST /api/tables"
+          tail -n 80 /tmp/api-mimico.log || true
+          exit 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run four-client smoke
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080/api
+          NEXT_PUBLIC_WS_URL: http://localhost:8080/ws
+          CI: "true"
+        run: npm run test:e2e
