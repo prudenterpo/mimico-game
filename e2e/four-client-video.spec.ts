@@ -56,6 +56,9 @@ test("four Chromium clients reach a match with fake-camera video tiles", async (
             await expect(client.page).toHaveURL(new RegExp(`/game/${tableId}`));
             await assertFourVideoTiles(client.page);
         }
+
+        await hostClient.page.screenshot({ path: "test-results/four-client-host-game.png", fullPage: true });
+        await guestClients[0].page.screenshot({ path: "test-results/four-client-guest-game.png", fullPage: true });
     } finally {
         await Promise.all(clients.map((client) => client.context.close()));
         await browser.close();
