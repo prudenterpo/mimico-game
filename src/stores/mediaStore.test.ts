@@ -27,7 +27,7 @@ function stream(): CapturedStream {
             kind: "video",
             enabled: true,
             readyState: "live",
-            stop() { return undefined; },
+            stop() { this.readyState = "ended"; },
             addEventListener() { return undefined; },
             removeEventListener() { return undefined; },
         },
@@ -35,7 +35,7 @@ function stream(): CapturedStream {
             kind: "audio",
             enabled: true,
             readyState: "live",
-            stop() { return undefined; },
+            stop() { this.readyState = "ended"; },
             addEventListener() { return undefined; },
             removeEventListener() { return undefined; },
         },
@@ -94,6 +94,34 @@ describe("media store", () => {
             `/app/match/${matchId}/media/unavailable`,
             `/app/match/${matchId}/media/available`,
         ]);
+    });
+
+    it("stops local tracks when leaving the page session", async () => {
+        const link = transport();
+        const local = stream();
+        await useMediaStore.getState().join({
+            matchId,
+            localUserId: "aaaa",
+            remoteUserIds: ["bbbb"],
+            transport: link,
+            getUserMedia: async () => local,
+            createPeer: () => ({
+                iceConnectionState: "new",
+                onicecandidate: null,
+                ontrack: null,
+                oniceconnectionstatechange: null,
+                addTrack() { return undefined; },
+                async createOffer() { return { type: "offer" as const, sdp: "offer" }; },
+                async createAnswer() { return { type: "answer" as const, sdp: "answer" }; },
+                async setLocalDescription() { return undefined; },
+                async setRemoteDescription() { return undefined; },
+                async addIceCandidate() { return undefined; },
+                close() { return undefined; },
+            }),
+        });
+        useMediaStore.getState().leave();
+        expect(local.getTracks().every((track) => track.readyState === "ended")).toBe(true);
+        expect(link.published.some((entry) => entry.body.kind === "LEAVE")).toBe(true);
     });
 
     it("does not pause the match when a guesser loses the camera", async () => {
