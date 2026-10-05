@@ -47,6 +47,21 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: maven
+          cache-dependency-path: api-mimico/pom.xml
+
+      - name: Resolve api-mimico Maven dependencies
+        working-directory: api-mimico
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if ./mvnw -B -DskipTests dependency:go-offline; then
+              exit 0
+            fi
+            echo "Maven Central resolve failed (attempt ${attempt}); retrying..."
+            sleep $((attempt * 8))
+          done
+          echo "Could not download api-mimico dependencies from Maven Central."
+          exit 1
 
       - name: Start api-mimico
         working-directory: api-mimico
