@@ -195,7 +195,10 @@ describe("media signaling", () => {
             }
             expect(created).toHaveLength(12);
             const offers = room.delivered.filter((entry) => entry.kind === "OFFER");
+            const joins = room.delivered.filter((entry) => entry.kind === "JOIN");
             expect(offers.length).toBeGreaterThan(0);
+            expect(joins.length).toBeGreaterThan(0);
+            expect(joins.every((entry) => entry.payload === undefined)).toBe(true);
             expect(offers.every((entry) => ids.includes(entry.toUserId) && entry.toUserId !== entry.fromUserId)).toBe(true);
             expect(logs.join("\n")).not.toContain(secretSdp);
 

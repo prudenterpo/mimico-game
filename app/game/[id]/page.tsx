@@ -182,8 +182,13 @@ export default function GamePage() {
         useMediaStore.getState().setServerMediaPaused(serverMediaPaused);
     }, [serverMediaPaused]);
 
-    useEffect(() => () => {
-        useMediaStore.getState().leave();
+    useEffect(() => {
+        const leave = () => useMediaStore.getState().leave();
+        window.addEventListener("pagehide", leave);
+        return () => {
+            window.removeEventListener("pagehide", leave);
+            leave();
+        };
     }, []);
 
     if (recovering || !matchState) {

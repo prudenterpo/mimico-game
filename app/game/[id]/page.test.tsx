@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GamePage from "./page";
 import { resetMediaStore } from "@/stores/mediaStore";
 import { useStore } from "@/stores/store";
@@ -54,6 +54,10 @@ describe("GamePage", () => {
     const selectWord = vi.fn();
     const sendMatchChat = vi.fn();
     const prepareRematch = vi.fn();
+
+    afterEach(() => {
+        resetMediaStore();
+    });
 
     beforeEach(() => {
         resetMediaStore();
